@@ -61,3 +61,36 @@ def build_shirt_topology(landmark_lib):
     )
     
     return seams
+
+
+def build_test_topology(landmark_lib):
+    seams = {}
+    
+    # 1. Neck Opening (Left Neck <-> Right Neck)
+    # Usually a hole, so we use DUAL to get front/back collar lines
+    seams["s1"] = SeamDefinition(
+        "s1", "1", "2", 
+        path_type=SeamPathType.GEODESIC 
+    )
+    
+    # 2. Right Shoulder (Neck R <-> Shoulder R)
+    seams["s2"] = SeamDefinition(
+        "s2", "2", "3", 
+        path_type=SeamPathType.GEODESIC
+    )
+    
+    # 3. Right Armhole (Shoulder R <-> Armpit R)
+    # SPECIAL CASE: This is a single logical item, but geometry 
+    # will cut two paths (Front/Back)
+    seams["s3"] = SeamDefinition(
+        "s3", "3", "4", 
+        path_type=SeamPathType.GEODESIC
+    )
+    
+    # 4. Right Side Seam (Armpit R <-> Waist R)
+    seams["s4"] = SeamDefinition(
+        "s4", "4", "1", 
+        path_type=SeamPathType.GEODESIC
+    )
+    
+    return seams

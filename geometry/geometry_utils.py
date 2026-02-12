@@ -1,36 +1,34 @@
+import sys
+
+sys.path.append('/home/kristijan/LOOM/potpourri3d/src')
+
 from typing import Dict
 import numpy as np
 import trimesh
 from scipy.spatial import cKDTree
+from collections import defaultdict, Counter, deque
+from itertools import combinations
+import potpourri3d as pp3d
+import polyscope as ps
 
 from spec import ProblemInstance, LandmarkDefinition
+import geometry.patch as patch
 
 
 class LandmarkMapper:
     """
-    Concrete implementation of the geometry mapping logic.
+    Maps Genotype Delta (u,v) -> Vertex ID using simple 3D projection.
     """
     def __init__(self, instance: ProblemInstance):
         self.instance = instance
         self.vertices = instance.mesh_vertices
         
-        # Cache KDTrees for active landmarks
-        self.region_trees = []
-        self.region_indices_map = []
-        
-        print(f"[Geometry] Pre-building KDTrees for {len(instance.active_landmarks)} active landmarks...")
-        
-        for lm in instance.active_landmarks:
-            # 1. Get the subset of vertices belonging to this ROI
-            # In a real run, these indices come from the pre-computed flood fill.
-            # For the skeleton, we assume lm.roi_vertex_indices is populated.
-            roi_global_indices = list(lm.roi_vertex_indices)
-            roi_coords = self.vertices[roi_global_indices]
-            
-            # 2. Build Tree
-            tree = cKDTree(roi_coords)
-            self.region_trees.append(tree)
-            self.region_indices_map.append(np.array(roi_global_indices))
+        # Build ONE global tree for the whole mesh.
+        # Since we assume the 4 corners are close to each other, 
+        # the interpolated point won't jump across the body 
+        # unless the mesh is extremely thin/concave at that spot.
+        print("[Geometry] Building global mesh KDTree...")
+        self.global_tree = cKDTree(self.vertices)
 
     def map_genotype_to_vertices(self, delta: np.ndarray) -> np.ndarray:
         """
@@ -39,36 +37,32 @@ class LandmarkMapper:
         Returns:
             (M,) array of Global Vertex IDs.
         """
-        num_landmarks = self.instance.num_landmarks
-        if len(delta) != 2 * num_landmarks:
-            raise ValueError(f"Delta size mismatch. Expected {2*num_landmarks}, got {len(delta)}")
-            
         resolved_indices = []
         
         for i, lm in enumerate(self.instance.active_landmarks):
-            # Extract u, v
-            u, v = delta[2*i], delta[2*i+1]
+            # 1. Extract u, v
+            u = delta[2*i]
+            v = delta[2*i+1]
             
-            # Get Corner Coordinates
-            c_indices = lm.boundary_corners
-            corners = self.vertices[list(c_indices)] # (4, 3)
+            # 2. Get Corner Coordinates
+            c_ids = lm.boundary_corners
+            corners = self.vertices[list(c_ids)] # Shape (4, 3)
             p00, p10, p11, p01 = corners[0], corners[1], corners[2], corners[3]
             
-            # Bilinear Interpolation
-            # Bottom edge (x axis at y=0)
+            # 3. Bilinear Interpolation in 3D
+            # This effectively creates a "virtual quad" inside the mesh volume
             p_bottom = (1 - u) * p00 + u * p10
-            # Top edge (x axis at y=1)
             p_top    = (1 - u) * p01 + u * p11
-            # Final point
             p_target = (1 - v) * p_bottom + v * p_top
             
-            # Snap to nearest valid vertex in ROI
-            _, relative_idx = self.region_trees[i].query(p_target)
-            global_id = self.region_indices_map[i][relative_idx]
+            # 4. Snap to nearest vertex globally
+            # Since p_target is weighted by corners, it is guaranteed 
+            # to be spatially close to the surface patch.
+            _, global_id = self.global_tree.query(p_target)
             
             resolved_indices.append(global_id)
             
-        return np.array(resolved_indices, dtype=int)
+        return np.array(resolved_indices, dtype=np.int32)
 
 
 def generate_symmetric_landmarks(
@@ -91,9 +85,7 @@ def generate_symmetric_landmarks(
         l_name = f"{name}_L"
         full_library[l_name] = LandmarkDefinition(
             name=l_name,
-            boundary_corners=lm.boundary_corners,
-            reference_vertex_id=lm.boundary_corners[0], # Placeholder
-            roi_vertex_indices=() # To be filled by flood fill later
+            boundary_corners=lm.boundary_corners
         )
         
         # 2. Compute Symmetric (Right)
@@ -109,10 +101,21 @@ def generate_symmetric_landmarks(
         r_name = f"{name}_R"
         full_library[r_name] = LandmarkDefinition(
             name=r_name,
-            boundary_corners=tuple(symmetric_indices),
-            reference_vertex_id=symmetric_indices[0],
-            roi_vertex_indices=() 
+            boundary_corners=tuple(symmetric_indices)
         )
         print(f"   Generated {r_name} from {l_name}")
 
     return full_library
+
+
+def _get_closest_idx(verts, query_p):
+    dists = np.linalg.norm(verts - query_p, axis=1)
+    closest_vertex_index = np.argmin(dists)
+    return closest_vertex_index
+
+
+def extract_side_idx(mesh, idx1, idx2, z_offset: float):
+    mid_x = (mesh.vertices[idx1][0] + mesh.vertices[idx2][0]) / 2.
+    ref_y = mesh.vertices[idx1][1]
+    query_p = np.array([mid_x, ref_y, z_offset])
+    return _get_closest_idx(mesh.vertices, query_p)

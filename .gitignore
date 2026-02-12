@@ -1,2 +1,7 @@
+**__pycache__**
 data/
 .DS_Store
+
+potpourri3d/
+
+*.ply

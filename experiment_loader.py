@@ -1,8 +1,12 @@
 from typing import Dict, List
 import trimesh
 import numpy as np
-from spec import (ProblemInstance, TextureSpec, LandmarkDefinition, 
-                  SeamDefinition)
+from spec import (
+    ProblemInstance, 
+    TextureSpec, 
+    LandmarkDefinition, 
+    SeamDefinition
+)
 
 
 def load_experiment(
@@ -15,10 +19,9 @@ def load_experiment(
 ) -> ProblemInstance:
     
     print(f"[Loader] Loading mesh from {mesh_path}...")
-    # Using trimesh for easy IO, but we only keep vertices/faces for spec
     mesh = trimesh.load(mesh_path, process=False)
     
-    # 1. Identify used landmarks from selected seams
+    # 1. Identify used landmarks
     used_landmark_names = set()
     for s_name in active_seam_names:
         if s_name not in seam_lib:
@@ -29,23 +32,25 @@ def load_experiment(
         
     # 2. Sort for determinism
     sorted_lm_names = sorted(list(used_landmark_names))
-    print(f"[Loader] Identified {len(sorted_lm_names)} active landmarks: {sorted_lm_names}")
     
     # 3. Build Active Objects
     active_landmarks = tuple(landmark_lib[name] for name in sorted_lm_names)
-    
-    # Map name -> index in the active list
     name_to_idx = {name: i for i, name in enumerate(sorted_lm_names)}
     
-    # 4. Build Topology
+    # 4. Build Topology, Definitions, AND Types
     topology = []
     ordered_seam_names = sorted(active_seam_names)
+    active_definitions = []
+    active_types = [] # NEW list
     
     for s_name in ordered_seam_names:
         seam = seam_lib[s_name]
         start_i = name_to_idx[seam.start_landmark]
         end_i   = name_to_idx[seam.end_landmark]
+        
         topology.append((start_i, end_i))
+        active_definitions.append(seam)
+        active_types.append(seam.path_type) # NEW: Extract type
         
     # 5. Create Instance
     instance = ProblemInstance(
@@ -56,6 +61,8 @@ def load_experiment(
         mesh_faces=np.array(mesh.faces),
         active_landmarks=active_landmarks,
         active_seam_topology=tuple(topology),
+        active_seam_definitions=tuple(active_definitions),
+        active_seam_types=tuple(active_types), # NEW: Pass tuple
         seam_names=tuple(ordered_seam_names)
     )
     

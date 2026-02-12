@@ -1,5 +1,5 @@
 from typing import List, Tuple, Dict, Optional, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 import numpy as np
 from enum import Enum
@@ -20,10 +20,6 @@ class LandmarkDefinition:
     # Order: [Bottom-Left, Bottom-Right, Top-Right, Top-Left]
     # Corresponding to (0,0), (1,0), (1,1), (0,1) in the delta space.
     boundary_corners: Tuple[int, int, int, int]
-    
-    # Pre-computed list of ALL vertices strictly inside the quad defined 
-    # by the corners. Used for efficient manifold snapping.
-    roi_vertex_indices: Optional[Tuple[int, ...]]
 
 class SeamPathType(Enum):
     GEODESIC = "geodesic"     # Standard shortest path (e.g., Side Seam)
@@ -37,9 +33,11 @@ class SeamDefinition:
     name: str
     start_landmark: str
     end_landmark: str
+    path_type: SeamPathType = SeamPathType.GEODESIC     # Hints the geometry engine on how to cut between these points
     
-    # NEW: Hints the geometry engine on how to cut between these points.
-    path_type: SeamPathType = SeamPathType.GEODESIC
+    # NEW: Store specific geometric parameters here.
+    # e.g. {"front_z": 0.05, "back_z": -0.1}
+    geometry_hints: Dict[str, float] = field(default_factory=dict)
 
 # ==============================================================================
 # 2. PROBLEM CONTEXT (Immutable)
@@ -56,7 +54,8 @@ class TextureSpec:
         Returns allowed relative rotation angles (degrees) for internal alignment.
         e.g., Stripes -> [0, 180], Grid -> [0, 90, 180, 270].
         """
-        pass
+        # TODO: full implementation
+        return [0.0, 180.0]
 
 @dataclass(frozen=True)
 class ProblemInstance:
@@ -74,16 +73,17 @@ class ProblemInstance:
     mesh_vertices: np.ndarray # Shape (N, 3)
     mesh_faces: np.ndarray    # Shape (F, 3)
     
-    # Active Subset Logic
-    # 1. ORDERED list of active landmarks (Genotype mappings).
+    # Active Logic
     active_landmarks: Tuple[LandmarkDefinition, ...]
-    
-    # 2. ORDERED list of active seams (Topology definitions).
-    # Tuple of indices into 'active_landmarks': (start_idx, end_idx)
-    active_seam_topology: Tuple[Tuple[int, int], ...]
-    
-    # Debugging / Analysis Names
+    active_seam_topology: Tuple[Tuple[int, int], ...] # Indices into active_landmarks
+
     seam_names: Tuple[str, ...]
+    
+    # Store the full objects, not just types, so we can access 'geometry_hints'
+    active_seam_definitions: Tuple[SeamDefinition, ...]
+    
+    # Genotype.alpha[i] corresponds to active_seam_types[i]
+    active_seam_types: Tuple[SeamPathType, ...]
 
     @property
     def num_landmarks(self) -> int:

@@ -6,8 +6,23 @@ import trimesh
 
 from spec import LandmarkDefinition, TextureSpec
 from experiment_loader import load_experiment
-from geometry_utils import LandmarkMapper, generate_symmetric_landmarks
-from topologies import build_shirt_topology
+from geometry.geometry_utils import (
+    LandmarkMapper, 
+    generate_symmetric_landmarks
+)
+from topologies import build_shirt_topology, build_test_topology
+from geometry.cut_utils import (
+    perform_global_cut, 
+    assign_patch_labels
+)
+from geometry.export import (
+    export_patches,
+    export_seamlines,
+    export_scales,
+    export_patch_labels,
+    create_latest_dir
+)
+from geometry.geometry_processor import BatchBuilder
 
 # ==============================================================================
 # 0. MOCK DATA PREPARATION (User Input)
@@ -32,6 +47,19 @@ LANDMARKS = {
         boundary_corners=(6524, 6557, 4984, 4921)
     )
 }
+ACTIVE_SEAMS = ["Side_L", "Side_R", "Neck_Opening", "Shoulder_R", "Shoulder_L", "Armhole_R", "Armhole_L", "Waist_Hem"]
+
+'''
+LANDMARKS = {
+    "1": LandmarkDefinition("1", (4404, 4404, 4404, 4404)),
+    "2": LandmarkDefinition("2", (855, 855, 855, 855)),
+    "3": LandmarkDefinition("3", (921, 921, 921, 921)),
+    "4": LandmarkDefinition("4", (4408, 4408, 4408, 4408))
+}
+ACTIVE_SEAMS = ["s1", "s2", "s3", "s4"]
+'''
+
+SHOULDER_KPT_IDX = 5335
 
 # ==============================================================================
 # 1. SETUP EXPERIMENT
@@ -41,16 +69,17 @@ mesh = trimesh.load('data/SMPL_FEMALE.ply')
 
 # 2. Generate Full Library (L + R)
 full_landmark_lib = generate_symmetric_landmarks(mesh, LANDMARKS)
-shirt_seams = build_shirt_topology(full_landmark_lib)
+#full_landmark_lib = LANDMARKS
+seams = build_shirt_topology(full_landmark_lib)
+#seams = build_test_topology(full_landmark_lib)
 
-active_seams = ["Side_Seam", "Neck_Line"]
 texture_spec = TextureSpec("Stripes", 10.0, 100.0)
 
 instance = load_experiment(
     mesh_path='data/SMPL_FEMALE.ply',
     landmark_lib=full_landmark_lib,
-    seam_lib=shirt_seams,
-    active_seam_names=active_seams,
+    seam_lib=seams,
+    active_seam_names=ACTIVE_SEAMS,
     texture=texture_spec,
     fabric_width=150.0
 )
@@ -80,3 +109,23 @@ print(f"   Mapped Vertex IDs: {vertex_ids}")
 # Verify output size
 assert len(vertex_ids) == instance.num_landmarks
 print("\n[Success] Skeleton verification complete.")
+
+builder = BatchBuilder(instance)
+landmarks_batch = builder.build_batch(vertex_ids)
+
+# step 3 - cutting
+for garment_part in ['upper']:
+    cut_mesh, patches, patch_faces, seamlines_dict_list, symmetric_seamline_flags, valid_patch_idxs = perform_global_cut(landmarks_batch, mesh.vertices, mesh.faces)
+    patch_labels_dict = assign_patch_labels(patches, garment_part, valid_patch_idxs, mesh.vertices[SHOULDER_KPT_IDX])
+
+    landmark_coordinates_batch = []
+    for landmark_list in landmarks_batch:
+        landmark_coordinates_batch.append([mesh.vertices[landmark_list[x]] for x in range(len(landmark_list))])
+    points = np.asarray([p for group in landmark_coordinates_batch for p in group], dtype=np.float32)
+    trimesh.PointCloud(vertices=points).export('landmarks.ply')
+
+    export_patches(patches, [], valid_patch_idxs, garment_part)
+    export_seamlines(seamlines_dict_list, symmetric_seamline_flags, garment_part)
+    export_scales(mesh, patches, valid_patch_idxs, garment_part, is_skirtified=False)
+    export_patch_labels(patch_labels_dict, garment_part)
+    create_latest_dir(valid_patch_idxs, garment_part)
