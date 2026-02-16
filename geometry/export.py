@@ -96,3 +96,11 @@ def create_latest_dir(valid_patch_idxs, garment_part):
     if os.path.exists(scales_dir):
         shutil.rmtree(scales_dir)
     os.makedirs(scales_dir)
+
+
+def export_data(patches, valid_patch_idxs, garment_part, seamlines_dict_list, symmetric_seamline_flags, patch_labels_dict, mesh):
+    export_patches(patches, [], valid_patch_idxs, garment_part)
+    export_seamlines(seamlines_dict_list, symmetric_seamline_flags, garment_part)
+    export_scales(mesh, patches, valid_patch_idxs, garment_part, is_skirtified=False)
+    export_patch_labels(patch_labels_dict, garment_part)
+    create_latest_dir(valid_patch_idxs, garment_part)

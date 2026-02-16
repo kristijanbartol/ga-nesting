@@ -10,10 +10,6 @@ import potpourri3d as pp3d
 
 from geometry.const import EXCLUDE_PATCH_VIDXS
 
-print("file:", pp3d.__file__)
-print("path:", list(pp3d.__path__))
-print('!!!!!')
-
 
 def perform_global_cut(paths_to_cut, vertices, faces):
     ref_vertices = vertices.copy()
@@ -30,7 +26,7 @@ def perform_global_cut(paths_to_cut, vertices, faces):
             
     patches, patch_faces, valid_patch_idxs, vertex_patch_index_map = extract_and_save_patch_meshes(cut_mesh, v_patch_idxs_dict, excluded_patch_idxs)
     
-    seamlines_dict_list, symmetric_seamline_flags = extract_seamlines(patches, cut_indices, v_patch_idxs_dict, valid_patch_idxs, vertex_patch_index_map)
+    seamlines_dict_list, symmetric_seamline_flags = extract_seamlines(patches, cut_indices, valid_patch_idxs, vertex_patch_index_map)
     
     # 1. Flatten index list
     all_indices = np.concatenate(cut_indices)
@@ -98,7 +94,10 @@ def assign_patch_labels(patches, garment_part, valid_patch_idxs, ref_point):
     ref_point_right = ref_point if ref_point[0] < symm_ref_point[0] else symm_ref_point
     ref_point_left  = ref_point if ref_point[0] > symm_ref_point[0] else symm_ref_point
 
-    patch_labels = defaultdict(list)
+    patch_labels_dict = {
+        'sleeve': [],
+        'back': []
+    }
     for patch_idx, patch in enumerate(patches):
         if patch_idx in valid_patch_idxs:
             # check whether the patch is part of the sleeve
@@ -109,15 +108,15 @@ def assign_patch_labels(patches, garment_part, valid_patch_idxs, ref_point):
                 is_majority_left = count_left > (len(patch.vertices) / 2)
 
                 if is_majority_right or is_majority_left:
-                    patch_labels['sleeve'].append(patch_idx)
+                    patch_labels_dict['sleeve'].append(patch_idx)
             
             # check whether the patch is a back patch
             count_back = (patch.vertices[:, 2] < ref_point[2]).sum()
             is_majority_back = count_back > (len(patch.vertices) / 2)
             if is_majority_back:
-                patch_labels['back'].append(patch_idx)
+                patch_labels_dict['back'].append(patch_idx)
 
-    return patch_labels
+    return patch_labels_dict
 
 
 def flood_fill_vertex_patches_with_multilabels(mesh, polylines):
@@ -262,7 +261,7 @@ def extract_and_save_patch_meshes(mesh, vertex_to_patch_idxs_dict, excluded_patc
     return patches, patch_faces, valid_patch_idxs, vertex_patch_index_map
 
 
-def extract_seamlines(patches, boundary_indices_array, v_to_patch_idxs_dict, valid_patch_idxs, vertex_patch_index_map):
+def extract_seamlines(patches, boundary_indices_array, valid_patch_idxs, vertex_patch_index_map):
     '''
     Extract seamline indices as pairs of corresponding vertices in the neighboring patches.
 
@@ -278,9 +277,9 @@ def extract_seamlines(patches, boundary_indices_array, v_to_patch_idxs_dict, val
         is_seamline = True
 
         for vidx in boundary_indices:
-            v_patch_idxs = v_to_patch_idxs_dict[vidx]
+            v_patch_idxs = set(vertex_patch_index_map[vidx].keys())
             #filtered_patch_idxs = sorted(set(v_patch_idxs) & valid_patch_idxs)
-            filtered_patch_idxs = sorted(set(v_patch_idxs) & valid_patch_idxs & set(vertex_patch_index_map[vidx].keys()))
+            filtered_patch_idxs = sorted(set(v_patch_idxs) & valid_patch_idxs)
             #if len(filtered_patch_idxs) == 1:    # then it's a boundary, not a seamline
             if len(filtered_patch_idxs) == 0:    # then it's a boundary, not a seamline
                 is_seamline = False
@@ -295,7 +294,7 @@ def extract_seamlines(patches, boundary_indices_array, v_to_patch_idxs_dict, val
         # After collecting all the seamlines, there are tips of seamlines, connected via either one or two vertices.
         # Although these are logically valid connections, they are not useful for the energy minimization.
         for patch_pair in list(seamlines_dict.keys()):
-            if len(seamlines_dict[patch_pair]) <= 1:
+            if len(seamlines_dict[patch_pair]) <= 2:
                 del(seamlines_dict[patch_pair])
 
         # Finally, add only the seamlines (not other boundaries).

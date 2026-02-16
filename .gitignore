@@ -2,6 +2,8 @@
 data/
 .DS_Store
 
+anisotropic-parameterization/
 potpourri3d/
 
 *.ply
+results/

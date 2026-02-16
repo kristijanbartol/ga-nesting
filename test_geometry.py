@@ -15,14 +15,9 @@ from geometry.cut_utils import (
     perform_global_cut, 
     assign_patch_labels
 )
-from geometry.export import (
-    export_patches,
-    export_seamlines,
-    export_scales,
-    export_patch_labels,
-    create_latest_dir
-)
+from geometry.export import export_data
 from geometry.geometry_processor import BatchBuilder
+from geometry.parameterization import parameterize
 
 # ==============================================================================
 # 0. MOCK DATA PREPARATION (User Input)
@@ -117,15 +112,16 @@ landmarks_batch = builder.build_batch(vertex_ids)
 for garment_part in ['upper']:
     cut_mesh, patches, patch_faces, seamlines_dict_list, symmetric_seamline_flags, valid_patch_idxs = perform_global_cut(landmarks_batch, mesh.vertices, mesh.faces)
     patch_labels_dict = assign_patch_labels(patches, garment_part, valid_patch_idxs, mesh.vertices[SHOULDER_KPT_IDX])
-
-    landmark_coordinates_batch = []
-    for landmark_list in landmarks_batch:
-        landmark_coordinates_batch.append([mesh.vertices[landmark_list[x]] for x in range(len(landmark_list))])
-    points = np.asarray([p for group in landmark_coordinates_batch for p in group], dtype=np.float32)
-    trimesh.PointCloud(vertices=points).export('landmarks.ply')
-
-    export_patches(patches, [], valid_patch_idxs, garment_part)
-    export_seamlines(seamlines_dict_list, symmetric_seamline_flags, garment_part)
-    export_scales(mesh, patches, valid_patch_idxs, garment_part, is_skirtified=False)
-    export_patch_labels(patch_labels_dict, garment_part)
-    create_latest_dir(valid_patch_idxs, garment_part)
+    
+    export_data( 
+        patches, 
+        valid_patch_idxs,
+        garment_part,
+        seamlines_dict_list, 
+        symmetric_seamline_flags, 
+        patch_labels_dict, 
+        cut_mesh
+    )
+    
+# step 4 - parameterization
+parameterize()
