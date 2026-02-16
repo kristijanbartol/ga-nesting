@@ -1,41 +1,33 @@
-import numpy as np
-from nesting.item import NestingItem
+from nesting.loader import PatchLoader
+from nesting.engine import NestingEngine
 
-# ==============================================================================
-# TEST DATA: A Simple Rectangle (10 x 20)
-# ==============================================================================
-# Centered at (0,0), so X is [-5, 5], Y is [-10, 10]
-rect_verts = np.array([
-    [-5, -10],
-    [ 5, -10],
-    [ 5,  10],
-    [-5,  10]
-])
+# 1. Load Real Patches
+loader = PatchLoader("results/pattern/latest")
+items = loader.load_items()
 
-print("[Test 1] creating NestingItem...")
-item = NestingItem(item_id=1, name="Rectangle", original_vertices=rect_verts)
+# 2. Run Engine
+print("\n[Nesting] Starting Layout Engine...")
+engine = NestingEngine(fabric_width=1500.0, texture_spec=None) # 1500mm = 1.5m
+final_state = engine.nest(items)
 
-print(f"   Initial Bounds: {item.bounds}")
-# Expected: (-5.0, -10.0, 5.0, 10.0)
+# 3. Report
+print(f"\n[Result] Layout Complete.")
+print(f"   Items Placed: {len(final_state.placed_items)}")
+print(f"   Fabric Length Used: {final_state.total_height:.2f} mm")
+print(f"   Efficiency: {(sum(i.area for i in items) / (1500 * final_state.total_height)):.2%}")
 
-# ==============================================================================
-# TEST ROTATION (90 Degrees)
-# ==============================================================================
-print("\n[Test 2] Rotating 90 degrees...")
-item.set_rotation(90)
+# 4. Visualize Result
+import matplotlib.pyplot as plt
 
-print(f"   Rotated Bounds: {item.bounds}")
-# Expected: (-10.0, -5.0, 10.0, 5.0) 
-# (The 20-height became 20-width)
+fig, ax = plt.subplots(figsize=(10, 20))
+# Draw Fabric
+ax.add_patch(plt.Rectangle((0,0), 10, final_state.total_height, fill=None, edgecolor='black'))
 
-# ==============================================================================
-# TEST PLACEMENT (Translation)
-# ==============================================================================
-print("\n[Test 3] Placing at (100, 100)...")
-placed_poly = item.place_at(100, 100)
+for item, x, y, poly in final_state.placed_items:
+    # Extract coords
+    px, py = poly.exterior.xy
+    ax.fill(px, py, alpha=0.5, label=item.name)
+    ax.text(x, y, item.name, fontsize=8)
 
-print(f"   Placed Bounds: {placed_poly.bounds}")
-# Expected: (90.0, 95.0, 110.0, 105.0)
-# Center (100,100) +/- half dimensions
-
-print("\n[Success] Basic Geometry Engine is functional.")
+ax.set_aspect('equal')
+plt.show()
