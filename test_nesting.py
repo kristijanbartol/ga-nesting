@@ -18,10 +18,11 @@ print(f"   Efficiency: {(sum(i.area for i in items) / (1500 * final_state.total_
 
 # 4. Visualize Result
 import matplotlib.pyplot as plt
+from shapely.geometry import Polygon
 
 fig, ax = plt.subplots(figsize=(10, 20))
 # Draw Fabric
-ax.add_patch(plt.Rectangle((0,0), 10, final_state.total_height, fill=None, edgecolor='black'))
+ax.add_patch(plt.Rectangle((0,0), 1500, final_state.total_height, fill=None, edgecolor='black'))
 
 for item, x, y, poly in final_state.placed_items:
     # Extract coords

@@ -135,57 +135,76 @@ class NestingEngine:
         fabric = FabricState(self.width)
         heuristic = BottomLeftHeuristic()
         
-        # Sort items by Area (Largest First) - standard packing heuristic
-        # In the full EA, this order comes from the 'pi' gene.
+        # Define Texture Periods (Grid Spacing)
+        # Default to small value (1mm) if no texture is provided to simulate "continuous" placement
+        if self.texture:
+            tx = self.texture.period_x
+            ty = self.texture.period_y
+        else:
+            tx, ty = 1.0, 1.0 
+
+        # Sort items by Area (Largest First)
         sorted_items = sorted(items, key=lambda x: x.area, reverse=True)
         
         for item in sorted_items:
-            # 1. Rotate (Fixed to 0 for now, EA would set this)
+            # 1. Rotate (Fixed to 0 for now)
             item.set_rotation(0) 
             
-            # 2. Get Candidates (Raw positions)
-            # The heuristic proposes based on geometry only
+            # 2. Get Candidates (Proposed for Bottom-Left Corner)
             raw_candidates = heuristic.propose_positions(item.shape, fabric)
             
-            best_pos = None
+            best_pos = None # Stores (centroid_x, centroid_y)
+            
+            # Pre-calculate offset to save time
+            minx_offset, miny_offset = item.bottom_left_offset
             
             # 3. Evaluate Candidates
-            for (x, y) in raw_candidates:
+            for (corner_x, corner_y) in raw_candidates:
                 
-                # --- TEXTURE SNAPPING LOGIC ---
-                # This is the Core Novelty.
-                # If we have a texture, we can't just place at (x,y).
-                # We must shift (x,y) so the item's anchor aligns with the lattice.
+                # A. Convert "Corner Proposal" -> "Centroid Proposal"
+                # corner_x is where the Heuristic wants the bottom-left to be.
+                # centroid_x is where the item center must be to achieve that.
+                # Formula: Center = Corner - Offset (because Offset = Corner - Center)
+                # Wait, Offset = minx (negative number).
+                # So Corner = Center + minx  =>  Center = Corner - minx
+                centroid_x = corner_x - minx_offset
+                centroid_y = corner_y - miny_offset
                 
-                # Assume Texture Period = (Tx, Ty)
-                # We want: (x + anchor_x) % Tx == 0
-                # So: x_snapped = round_up_to_multiple(x + anchor_x, Tx) - anchor_x
+                # B. Snap CENTROID to Texture Grid
+                # We align the "anchor" (center) to the lattice
+                snapped_cx = round(centroid_x / tx) * tx
+                snapped_cy = round(centroid_y / ty) * ty
                 
-                # Simplified for this test: Snap to nearest 10mm grid
-                # In real code, use self.texture.period_x
-                tx, ty = 10.0, 10.0 
+                # C. Generate Test Polygon at this snapped centroid location
+                test_poly = item.place_at(snapped_cx, snapped_cy)
                 
-                snapped_x = round(x / tx) * tx
-                snapped_y = round(y / ty) * ty
+                # D. Check Bounds (Critical!)
+                # Now that we snapped, did we accidentally push the bottom below zero?
+                poly_minx, poly_miny, poly_maxx, poly_maxy = test_poly.bounds
                 
-                # Create test polygon at snapped position
-                test_poly = item.place_at(snapped_x, snapped_y)
-                
-                # Check Collision
+                if poly_minx < 0 or poly_maxx > self.width:
+                    continue # Out of width bounds
+                if poly_miny < 0:
+                    continue # Out of height bounds (Below Zero check)
+
+                # E. Check Collision
                 if not fabric.is_overlapping(test_poly):
-                    best_pos = (snapped_x, snapped_y)
-                    break # Found the best spot (first valid in sorted list)
+                    # Found a valid spot!
+                    best_pos = (snapped_cx, snapped_cy)
+                    break 
             
-            # 4. Commit or Fail
+            # 4. Commit
             if best_pos:
                 fabric.place(item, best_pos[0], best_pos[1])
-                print(f"   Placed {item.name} at {best_pos}")
             else:
-                # Fallback: If no candidate works (rare with infinite height),
-                # Place it way above the highest item.
-                # (Simple 'Skyline' fallback)
-                safe_y = fabric.total_height + 1.0
-                fabric.place(item, 0.0, safe_y)
-                print(f"   Placed {item.name} at fallback (0, {safe_y})")
+                # Fallback: Place high above everything
+                # Align safe Y to grid as well
+                current_max_y = fabric.total_height
+                safe_y = round((current_max_y - miny_offset + 10.0) / ty) * ty
+                
+                # We also need a safe X (start at 0 + offset)
+                safe_x = round((0.0 - minx_offset) / tx) * tx
+                
+                fabric.place(item, safe_x, safe_y)
                 
         return fabric

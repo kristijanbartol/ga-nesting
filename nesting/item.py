@@ -60,3 +60,13 @@ class NestingItem:
     def bounds(self) -> Tuple[float, float, float, float]:
         """Returns (minx, miny, maxx, maxy)."""
         return self.shape.bounds
+    
+    @property
+    def bottom_left_offset(self) -> Tuple[float, float]:
+        """
+        Returns the vector from the Centroid (0,0) to the Bottom-Left corner (minx, miny).
+        Used to correct placement so the piece sits strictly inside the positive quadrant.
+        """
+        minx, miny, _, _ = self.shape.bounds
+        # shape is centered at (0,0), so minx/miny are usually negative
+        return (minx, miny)

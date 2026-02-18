@@ -36,7 +36,7 @@ class PatchLoader:
             mesh = trimesh.load(fpath, process=False)
             
             # 3. Flatten (Drop Z if it exists)
-            vertices_2d = mesh.vertices[:, :2]
+            vertices_2d = mesh.vertices[:, :2] * 1000.
             
             # 4. Extract Boundary Loop
             unique_edge_groups = trimesh.grouping.group_rows(mesh.edges_sorted, require_count=1)
