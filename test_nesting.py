@@ -1,34 +1,21 @@
 from nesting.loader import PatchLoader
 from nesting.engine import NestingEngine
+from spec import TextureSpec
+from nesting.vis_utils import visualize_layout
 
-# 1. Load Real Patches
+# 1. Define Texture (e.g. 50mm x 50mm grid)
+# This is what the GA will provide
+texture = TextureSpec(name="Grid", period_x=50.0, period_y=50.0)
+FABRIC_WIDTH = 1500.0 # 1.5 meters
+
+# 2. Load Geometry
 loader = PatchLoader("results/pattern/latest")
 items = loader.load_items()
 
-# 2. Run Engine
-print("\n[Nesting] Starting Layout Engine...")
-engine = NestingEngine(fabric_width=1500.0, texture_spec=None) # 1500mm = 1.5m
+# 3. Run Engine
+engine = NestingEngine(fabric_width=FABRIC_WIDTH, texture_spec=texture)
 final_state = engine.nest(items)
 
-# 3. Report
-print(f"\n[Result] Layout Complete.")
-print(f"   Items Placed: {len(final_state.placed_items)}")
-print(f"   Fabric Length Used: {final_state.total_height:.2f} mm")
-print(f"   Efficiency: {(sum(i.area for i in items) / (1500 * final_state.total_height)):.2%}")
-
-# 4. Visualize Result
-import matplotlib.pyplot as plt
-from shapely.geometry import Polygon
-
-fig, ax = plt.subplots(figsize=(10, 20))
-# Draw Fabric
-ax.add_patch(plt.Rectangle((0,0), 1500, final_state.total_height, fill=None, edgecolor='black'))
-
-for item, x, y, poly in final_state.placed_items:
-    # Extract coords
-    px, py = poly.exterior.xy
-    ax.fill(px, py, alpha=0.5, label=item.name)
-    ax.text(x, y, item.name, fontsize=8)
-
-ax.set_aspect('equal')
-plt.show()
+# 4. Report & Visualize
+print(f"Nesting Complete. Efficiency: {(sum(i.area for i in items)/(FABRIC_WIDTH*final_state.total_height)):.2%}")
+visualize_layout(final_state, texture)

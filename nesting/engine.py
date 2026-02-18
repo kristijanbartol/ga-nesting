@@ -11,64 +11,34 @@ from .item import NestingItem
 @dataclass
 class FabricState:
     width: float
-    
-    # List of placed items: (ItemObject, Position_X, Position_Y, RotatedPolygon)
-    placed_items: List[Tuple[NestingItem, float, float, Polygon]] = field(default_factory=list)
-    
-    # Spatial Index for fast intersection checks
-    _tree: Optional[STRtree] = None
+    # item, x, y (centroid), poly
+    placed_items: List[Tuple[any, float, float, Polygon]] = field(default_factory=list)
     _geometries: List[Polygon] = field(default_factory=list)
-    
-    def place(self, item: NestingItem, x: float, y: float):
-        """Commit an item to the fabric."""
-        # 1. Create the final placed polygon in global coords
+    _tree: Optional[STRtree] = None
+
+    def place(self, item, x: float, y: float):
+        """Places item such that its LOCAL ORIGIN is at (x, y)."""
         placed_poly = item.place_at(x, y)
-        
-        # 2. Store
         self.placed_items.append((item, x, y, placed_poly))
         self._geometries.append(placed_poly)
-        
-        # 3. Rebuild Tree (Naive approach; incremental is harder in Python)
-        # For <50 items, rebuilding is instantaneous.
         self._tree = STRtree(self._geometries)
 
     def is_overlapping(self, candidate_poly: Polygon) -> bool:
-        """
-        Checks if candidate_poly intersects ANY placed item.
-        Returns True if collision detected.
-        """
-        if not self._geometries:
-            return False
-            
-        # 1. Check Fabric Width Limits
         minx, miny, maxx, maxy = candidate_poly.bounds
-        if minx < 0 or maxx > self.width:
-            return True
-        if miny < 0: # Fabric starts at Y=0
-            return True
-            
-        # 2. Query R-Tree for potential overlaps (Bounding Box check)
-        # query() returns indices of geometries that *might* intersect
-        candidate_indices = self._tree.query(candidate_poly)
+        # Strict Fabric Boundary Checks
+        if minx < -1e-5 or maxx > self.width + 1e-5: return True
+        if miny < -1e-5: return True
         
-        # 3. Precise Polygon Intersection check
-        for idx in candidate_indices:
-            existing_poly = self._geometries[idx]
-            if candidate_poly.intersects(existing_poly):
+        if not self._geometries: return False
+        indices = self._tree.query(candidate_poly)
+        for idx in indices:
+            if candidate_poly.intersects(self._geometries[idx]):
                 return True
-                
         return False
 
     @property
     def total_height(self) -> float:
-        """The total length of fabric used (Max Y)."""
-        if not self._geometries:
-            return 0.0
-        # Check bounds of all items
-        max_y = 0.0
-        for _, _, _, poly in self.placed_items:
-            max_y = max(max_y, poly.bounds[3])
-        return max_y
+        return max([p.bounds[3] for p in self._geometries]) if self._geometries else 0.0
 
 # ==============================================================================
 # 2. THE STRATEGIST (Heuristic)
@@ -128,83 +98,58 @@ class BottomLeftHeuristic:
 class NestingEngine:
     def __init__(self, fabric_width: float, texture_spec):
         self.width = fabric_width
-        self.texture = texture_spec
+        self.texture = texture_spec # e.g., TextureSpec(period_x=10, period_y=50)
 
-    def nest(self, items: List[NestingItem]) -> FabricState:
-        
+    def nest(self, items: List) -> FabricState:
         fabric = FabricState(self.width)
-        heuristic = BottomLeftHeuristic()
-        
-        # Define Texture Periods (Grid Spacing)
-        # Default to small value (1mm) if no texture is provided to simulate "continuous" placement
-        if self.texture:
-            tx = self.texture.period_x
-            ty = self.texture.period_y
-        else:
-            tx, ty = 1.0, 1.0 
-
-        # Sort items by Area (Largest First)
+        # Sort Largest Area First
         sorted_items = sorted(items, key=lambda x: x.area, reverse=True)
-        
-        for item in sorted_items:
-            # 1. Rotate (Fixed to 0 for now)
-            item.set_rotation(0) 
-            
-            # 2. Get Candidates (Proposed for Bottom-Left Corner)
-            raw_candidates = heuristic.propose_positions(item.shape, fabric)
-            
-            best_pos = None # Stores (centroid_x, centroid_y)
-            
-            # Pre-calculate offset to save time
-            minx_offset, miny_offset = item.bottom_left_offset
-            
-            # 3. Evaluate Candidates
-            for (corner_x, corner_y) in raw_candidates:
-                
-                # A. Convert "Corner Proposal" -> "Centroid Proposal"
-                # corner_x is where the Heuristic wants the bottom-left to be.
-                # centroid_x is where the item center must be to achieve that.
-                # Formula: Center = Corner - Offset (because Offset = Corner - Center)
-                # Wait, Offset = minx (negative number).
-                # So Corner = Center + minx  =>  Center = Corner - minx
-                centroid_x = corner_x - minx_offset
-                centroid_y = corner_y - miny_offset
-                
-                # B. Snap CENTROID to Texture Grid
-                # We align the "anchor" (center) to the lattice
-                snapped_cx = round(centroid_x / tx) * tx
-                snapped_cy = round(centroid_y / ty) * ty
-                
-                # C. Generate Test Polygon at this snapped centroid location
-                test_poly = item.place_at(snapped_cx, snapped_cy)
-                
-                # D. Check Bounds (Critical!)
-                # Now that we snapped, did we accidentally push the bottom below zero?
-                poly_minx, poly_miny, poly_maxx, poly_maxy = test_poly.bounds
-                
-                if poly_minx < 0 or poly_maxx > self.width:
-                    continue # Out of width bounds
-                if poly_miny < 0:
-                    continue # Out of height bounds (Below Zero check)
 
-                # E. Check Collision
-                if not fabric.is_overlapping(test_poly):
-                    # Found a valid spot!
-                    best_pos = (snapped_cx, snapped_cy)
-                    break 
+        for item in sorted_items:
+            item.set_rotation(0) # In GA, this would be item.set_rotation(rho)
+            placed = False
             
-            # 4. Commit
-            if best_pos:
-                fabric.place(item, best_pos[0], best_pos[1])
-            else:
-                # Fallback: Place high above everything
-                # Align safe Y to grid as well
-                current_max_y = fabric.total_height
-                safe_y = round((current_max_y - miny_offset + 10.0) / ty) * ty
+            # 1. Get current search candidates (proposing Bottom-Left of AABB)
+            # We use a simple Skyline/Bottom-Left hybrid
+            candidates = self._get_candidates(fabric)
+            
+            for (cx, cy) in candidates:
+                # 2. COORDINATE CONVERSION
+                # cx, cy is the target for the item's MIN_X, MIN_Y.
+                # We need to find where the CENTROID (0,0) should go.
+                # offset = (0,0) - (min_x, min_y)
+                off_x, off_y = item.bottom_left_offset
+                target_centroid_x = cx - off_x
+                target_centroid_y = cy - off_y
+
+                # 3. TEXTURE SNAP
+                # Snap the centroid to the lattice defined in TextureSpec
+                tx = self.texture.period_x
+                ty = self.texture.period_y
                 
-                # We also need a safe X (start at 0 + offset)
-                safe_x = round((0.0 - minx_offset) / tx) * tx
+                snapped_x = round(target_centroid_x / tx) * tx
+                snapped_y = round(target_centroid_y / ty) * ty
                 
-                fabric.place(item, safe_x, safe_y)
-                
+                # 4. VALIDATION
+                test_poly = item.place_at(snapped_x, snapped_y)
+                if not fabric.is_overlapping(test_poly):
+                    fabric.place(item, snapped_x, snapped_y)
+                    placed = True
+                    break
+            
+            if not placed:
+                # Fallback: Just push it above the current skyline
+                off_x, off_y = item.bottom_left_offset
+                safe_y = fabric.total_height - off_y + 10.0
+                fabric.place(item, -off_x, safe_y)
+
         return fabric
+
+    def _get_candidates(self, fabric) -> List[Tuple[float, float]]:
+        """Proposes Bottom-Left corner locations."""
+        pts = [(0.0, 0.0)]
+        for _, _, _, poly in fabric.placed_items:
+            minx, miny, maxx, maxy = poly.bounds
+            pts.append((maxx, miny)) # To the right
+            pts.append((minx, maxy)) # On top
+        return sorted(pts, key=lambda p: (p[1], p[0]))
