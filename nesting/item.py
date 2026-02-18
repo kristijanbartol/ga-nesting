@@ -2,7 +2,7 @@ import numpy as np
 from shapely.geometry import Polygon
 from shapely.affinity import rotate, translate
 from dataclasses import dataclass, field
-from typing import Tuple
+from typing import Tuple, Optional
 
 
 @dataclass
@@ -16,6 +16,13 @@ class NestingItem:
     
     # The raw vertices (N, 2) centered at (0,0) locally.
     original_vertices: np.ndarray 
+    
+    # Patch index as used by export_seamlines (e.g., 1, 2, ...)
+    patch_idx: Optional[int] = None
+
+    # Optional anchor point (in LOCAL coordinates) used for texture alignment.
+    # When present, the nesting engine will snap this point to the texture lattice.
+    seam_anchor_local: Optional[Tuple[float, float]] = None
     
     # The active Shapely geometry (after rotation)
     # initialized in __post_init__

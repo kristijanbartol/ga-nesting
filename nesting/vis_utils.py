@@ -28,9 +28,16 @@ def visualize_layout(fabric_state, texture_spec):
         x, y = poly.exterior.xy
         ax.fill(x, y, alpha=0.6, label=item.name, edgecolor='darkblue')
         
-        # Draw the Anchor Point (Centroid) - Should land on a grid intersection
-        ax.scatter([cx], [cy], color='red', s=20, zorder=15)
-        ax.text(cx, cy, f" {item.name}", fontsize=7, verticalalignment='bottom')
+        # Draw the snapped anchor point.
+        # If seam_anchor_local exists, show that (this is what is snapped).
+        if getattr(item, 'seam_anchor_local', None) is not None:
+            axx = cx + float(item.seam_anchor_local[0])
+            ayy = cy + float(item.seam_anchor_local[1])
+        else:
+            axx, ayy = cx, cy
+
+        ax.scatter([axx], [ayy], color='red', s=20, zorder=15)
+        ax.text(axx, ayy, f" {item.name}", fontsize=7, verticalalignment='bottom')
 
     ax.set_xlim(-10, width + 10)
     ax.set_ylim(-10, max_h)

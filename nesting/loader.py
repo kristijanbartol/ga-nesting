@@ -11,6 +11,32 @@ from .utils import boundary_loops_from_edges, polygon_area_2d
 class PatchLoader:
     def __init__(self, root_dir: str):
         self.root_dir = root_dir
+        
+    def _load_seam_anchor_indices(self) -> dict[int, int]:
+        """Load a simple seam-based anchor mapping: patch_idx -> vertex_idx.
+
+        Minimal implementation for the current experiment:
+        - reads the exported correspondence file seam-2_1-2.txt
+        - uses the FIRST vertex-pair as the "upper start" anchor
+        - returns a dict mapping {1: v_idx_in_patch1, 2: v_idx_in_patch2}
+
+        If the file is missing, returns an empty dict and nesting falls back
+        to the default behavior.
+        """
+        fpath = os.path.join('data', 'seamlines', 'upper', 'seam-3_1-2.txt')
+        if not os.path.exists(fpath):
+            return {}
+
+        with open(fpath, 'r') as f:
+            lines = [ln.strip() for ln in f if ln.strip()]
+        if len(lines) < 4:
+            return {}
+
+        # lines[0] = symmetric flag (ignored)
+        p_a = int(lines[1])
+        p_b = int(lines[2])
+        v_a, v_b = map(int, lines[3].split())
+        return {p_a: v_a, p_b: v_b}
 
     def load_items(self) -> list[NestingItem]:
         """
@@ -27,10 +53,16 @@ class PatchLoader:
             
         print(f"[Loader] Found {len(files)} patch files.")
         
+        seam_anchor_vidx = self._load_seam_anchor_indices()
         items = []
         for i, fpath in enumerate(files):
             # Extract simple name (e.g., "patch_0")
             patch_name = os.path.basename(os.path.dirname(fpath))
+            
+            try:
+                patch_idx = int(patch_name.split('_')[-1])
+            except Exception:
+                patch_idx = None
             
             # 2. Load Mesh
             mesh = trimesh.load(fpath, process=False)
@@ -63,8 +95,18 @@ class PatchLoader:
             item = NestingItem(
                 item_id=i,
                 name=patch_name,
-                original_vertices=centered_verts
+                original_vertices=centered_verts,
+                patch_idx=patch_idx
             )
+            
+            # Optional: seam-based alignment anchor (in LOCAL coordinates)
+            if patch_idx is not None and patch_idx in seam_anchor_vidx:
+                v_idx = int(seam_anchor_vidx[patch_idx])
+                if 0 <= v_idx < vertices_2d.shape[0]:
+                    # Convert to the same local frame as the polygon: subtract the boundary centroid
+                    anchor_local = vertices_2d[v_idx] - centroid
+                    item.seam_anchor_local = (float(anchor_local[0]), float(anchor_local[1]))
+            
             items.append(item)
             print(f"   Loaded {patch_name}: {len(boundary_verts)} vertices, Area={item.area:.2f}")
             

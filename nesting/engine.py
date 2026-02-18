@@ -123,12 +123,25 @@ class NestingEngine:
                 target_centroid_y = cy - off_y
 
                 # 3. TEXTURE SNAP
-                # Snap the centroid to the lattice defined in TextureSpec
+                # Snap an anchor point to the lattice defined in TextureSpec.
+                # If seam_anchor_local is provided (from exported seamlines), we snap that.
+                # Otherwise, we fall back to snapping the item's local origin.
                 tx = self.texture.period_x
                 ty = self.texture.period_y
                 
-                snapped_x = round(target_centroid_x / tx) * tx
-                snapped_y = round(target_centroid_y / ty) * ty
+                if getattr(item, 'seam_anchor_local', None) is not None:
+                    ax_local, ay_local = float(item.seam_anchor_local[0]), float(item.seam_anchor_local[1])
+                    anchor_x = target_centroid_x + ax_local
+                    anchor_y = target_centroid_y + ay_local
+
+                    snapped_anchor_x = round(anchor_x / tx) * tx
+                    snapped_anchor_y = round(anchor_y / ty) * ty
+
+                    snapped_x = snapped_anchor_x - ax_local
+                    snapped_y = snapped_anchor_y - ay_local
+                else:
+                    snapped_x = round(target_centroid_x / tx) * tx
+                    snapped_y = round(target_centroid_y / ty) * ty
                 
                 # 4. VALIDATION
                 test_poly = item.place_at(snapped_x, snapped_y)
