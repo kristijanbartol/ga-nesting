@@ -8,6 +8,12 @@ from nesting.loader import PatchLoader
 from nesting.engine import NestingEngine
 from nesting.vis_utils import visualize_layout
 
+from nesting.phase_utils import Rigid2D
+from nesting.stage2_global_align import solve_global_alignment_all_components
+from nesting.stage2_global_align import load_seam_constraints_from_dir
+from ga.real_evaluator import load_patch_vertices_full_from_latest
+
+
 
 def apply_kappa_to_items(items, genome, K, texture):
     import re
@@ -21,17 +27,60 @@ def apply_kappa_to_items(items, genome, K, texture):
         it.phase_offset = ((k / float(K)) * tx, (k / float(K)) * ty)
 
 
-def nest_and_show(latest_root, texture, fabric_width, genome, K, title):
+def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome, K, title):
     loader = PatchLoader(latest_root)
     items = loader.load_items()
 
+    # 1) Apply kappa -> phase_offset (snap lattice shift)
     apply_kappa_to_items(items, genome, K, texture)
 
+    # 2) Stage2: compute transforms from seam constraints + kappas + weights
+    constraints = load_seam_constraints_from_dir(seam_dir, weights_by_filename={}, default_weight=1.0)
+
+    V_full_by_id = load_patch_vertices_full_from_latest(latest_root, garment_part="upper", scale_mm=1000.0)
+    patch_ids = sorted(V_full_by_id.keys())
+
+    kappas_by_id = {pid: int(genome.kappa[pid - 1]) for pid in patch_ids if (pid - 1) < genome.kappa.size}
+
+    # apply genome weights by seam-file order
+    weighted_constraints = []
+    for i, c in enumerate(constraints):
+        w = float(genome.w[i]) if i < genome.w.size else 1.0
+        weighted_constraints.append(type(c)(c.patch_i, c.patch_j, c.pairs, w, c.name))
+
+    T0 = {pid: Rigid2D(0.0, 0.0, 0.0) for pid in patch_ids}
+
+    Tsol = solve_global_alignment_all_components(
+        patch_ids=patch_ids,
+        constraints=weighted_constraints,
+        patch_vertices_by_id=V_full_by_id,
+        lattice=lattice,
+        kappas_by_id=kappas_by_id,
+        K=K,
+        initial_transforms=T0,
+        max_iters=25,
+        verbose=False
+    )
+
+    # 3) Apply Stage2 transforms to the actual nested geometry
+    import re
+    for it in items:
+        m = re.search(r"patch_(\d+)", it.name)
+        if not m:
+            continue
+        pid = int(m.group(1))
+        T = Tsol.get(pid, Rigid2D(0, 0, 0))
+
+        it.original_vertices = T.apply(it.original_vertices)
+        it.set_rotation(it.current_rotation)  # rebuild polygon
+
+    # 4) Nest + visualize
     eng = NestingEngine(fabric_width=fabric_width, texture_spec=texture)
     fabric = eng.nest(items)
 
     print(f"{title}: height={fabric.total_height:.2f}")
     visualize_layout(fabric, texture)
+
 
 
 def main():
@@ -42,7 +91,7 @@ def main():
         period_u_mm=50.0,
         period_v_mm=50.0,
         K=8,
-        fabric_width_mm=150.0 * 1000.0,
+        fabric_width_mm=150.0 * 10.0,
     )
     evaluator = RealEvaluator(eval_cfg)
 
@@ -83,8 +132,10 @@ def main():
     print("BEST kappa:", best.genome.kappa)
 
     # Show baseline vs best NESTING (collision-free by construction)
-    nest_and_show(eval_cfg.latest_root, evaluator.instance.texture, eval_cfg.fabric_width_mm, base, eval_cfg.K, "BASELINE (kappa=0)")
-    nest_and_show(eval_cfg.latest_root, evaluator.instance.texture, eval_cfg.fabric_width_mm, best.genome, eval_cfg.K, "BEST (GA kappa)")
+    nest_and_show(eval_cfg.latest_root, eval_cfg.seam_dir, evaluator.lattice, evaluator.instance.texture,
+                eval_cfg.fabric_width_mm, base, eval_cfg.K, "BASELINE (kappa=0)")
+    nest_and_show(eval_cfg.latest_root, eval_cfg.seam_dir, evaluator.lattice, evaluator.instance.texture,
+                eval_cfg.fabric_width_mm, best.genome, eval_cfg.K, "BEST (GA kappa)")
 
 
 if __name__ == "__main__":

@@ -132,9 +132,12 @@ class NestingEngine:
                     ax_local, ay_local = float(item.seam_anchor_local[0]), float(item.seam_anchor_local[1])
                     anchor_x = target_centroid_x + ax_local
                     anchor_y = target_centroid_y + ay_local
-
-                    snapped_anchor_x = round(anchor_x / tx) * tx
-                    snapped_anchor_y = round(anchor_y / ty) * ty
+                    
+                    # Respect per-item lattice phase offset (e.g., from kappa) even when
+                    # we snap using a seam anchor.
+                    ox, oy = getattr(item, "phase_offset", (0.0, 0.0))
+                    snapped_anchor_x = round((anchor_x - ox) / tx) * tx + ox
+                    snapped_anchor_y = round((anchor_y - oy) / ty) * ty + oy
 
                     snapped_x = snapped_anchor_x - ax_local
                     snapped_y = snapped_anchor_y - ay_local

@@ -62,18 +62,6 @@
                 "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
             },
             "console": "integratedTerminal"
-        },
-
-        {
-            "name": "Vis Best",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/visualize_best_individual.py",
-            "cwd": "${workspaceFolder}",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
-            },
-            "console": "integratedTerminal"
         }
     ]
 }

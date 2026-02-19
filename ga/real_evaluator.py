@@ -156,6 +156,27 @@ class RealEvaluator:
         loader = PatchLoader(self.cfg.latest_root)
         items = loader.load_items()
         
+        # --- APPLY STAGE2 TRANSFORMS TO GEOMETRY BEFORE NESTING ---
+
+        # For each NestingItem, modify its geometry using Stage2 solution
+        for it in items:
+            import re
+            m = re.search(r"patch_(\d+)", it.name)
+            if not m:
+                continue
+
+            pid = int(m.group(1))
+
+            T = Tsol.get(pid, Rigid2D(0.0, 0.0, 0.0))
+
+            # Apply rigid transform to original vertices
+            V = it.original_vertices
+            Vt = T.apply(V)
+
+            # Replace geometry
+            it.original_vertices = Vt
+            it.set_rotation(0.0)  # rebuild polygon with new geometry
+        
         # Apply GA kappa to nesting: per-item phase offset affects texture snapping lattice
         # item.name is like "patch_02" -> patch id = 2
         import re
