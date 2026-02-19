@@ -155,6 +155,30 @@ class RealEvaluator:
         # We keep it minimal: use existing nesting loader + engine, ignore Stage2 transforms for nesting for now.
         loader = PatchLoader(self.cfg.latest_root)
         items = loader.load_items()
+        
+        # Apply GA kappa to nesting: per-item phase offset affects texture snapping lattice
+        # item.name is like "patch_02" -> patch id = 2
+        import re
+        tx = self.instance.texture.period_x
+        ty = self.instance.texture.period_y
+
+        for it in items:
+            m = re.search(r"patch_(\d+)", it.name)
+            if not m:
+                continue
+            pid = int(m.group(1))
+
+            # genome.kappa indexed by patch id-1 (assuming ids start at 1)
+            if (pid - 1) < g.kappa.size:
+                k = int(g.kappa[pid - 1])
+            else:
+                k = 0
+
+            # Discrete phase shift within one period:
+            # shift both axes for now (simple). Later we can separate u/v.
+            ox = (k / float(self.cfg.K)) * tx
+            oy = (k / float(self.cfg.K)) * ty
+            it.phase_offset = (ox, oy)
 
         # rotations are fixed for now (rho not optimized yet); later we can set per-item from g.rho.
         nest_engine = NestingEngine(fabric_width=self.cfg.fabric_width_mm, texture_spec=self.instance.texture)

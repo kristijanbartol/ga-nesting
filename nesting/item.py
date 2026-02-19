@@ -17,6 +17,9 @@ class NestingItem:
     # The raw vertices (N, 2) centered at (0,0) locally.
     original_vertices: np.ndarray 
     
+    # NEW: per-item phase offset for texture snapping (in same units as vertices, e.g. mm)
+    phase_offset: Tuple[float, float] = (0.0, 0.0)
+    
     # Patch index as used by export_seamlines (e.g., 1, 2, ...)
     patch_idx: Optional[int] = None
 

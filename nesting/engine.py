@@ -139,8 +139,11 @@ class NestingEngine:
                     snapped_x = snapped_anchor_x - ax_local
                     snapped_y = snapped_anchor_y - ay_local
                 else:
-                    snapped_x = round(target_centroid_x / tx) * tx
-                    snapped_y = round(target_centroid_y / ty) * ty
+                    # NEW: phase offset shifts the snapping lattice for this item
+                    ox, oy = getattr(item, "phase_offset", (0.0, 0.0))
+
+                    snapped_x = round((target_centroid_x - ox) / tx) * tx + ox
+                    snapped_y = round((target_centroid_y - oy) / ty) * ty + oy
                 
                 # 4. VALIDATION
                 test_poly = item.place_at(snapped_x, snapped_y)

@@ -1,8 +1,37 @@
-# run_ga_real_minimal.py
+# visualize_ga_effect.py
 import numpy as np
+from copy import deepcopy
 
-from ga_spec import GAInstance, GAConfig, run_ga
+from ga_spec import GAInstance, GAConfig, run_ga, Individual
 from ga.real_evaluator import RealEvaluator, RealEvaluatorConfig
+from nesting.loader import PatchLoader
+from nesting.engine import NestingEngine
+from nesting.vis_utils import visualize_layout
+
+
+def apply_kappa_to_items(items, genome, K, texture):
+    import re
+    tx, ty = texture.period_x, texture.period_y
+    for it in items:
+        m = re.search(r"patch_(\d+)", it.name)
+        if not m:
+            continue
+        pid = int(m.group(1))
+        k = int(genome.kappa[pid - 1]) if (pid - 1) < genome.kappa.size else 0
+        it.phase_offset = ((k / float(K)) * tx, (k / float(K)) * ty)
+
+
+def nest_and_show(latest_root, texture, fabric_width, genome, K, title):
+    loader = PatchLoader(latest_root)
+    items = loader.load_items()
+
+    apply_kappa_to_items(items, genome, K, texture)
+
+    eng = NestingEngine(fabric_width=fabric_width, texture_spec=texture)
+    fabric = eng.nest(items)
+
+    print(f"{title}: height={fabric.total_height:.2f}")
+    visualize_layout(fabric, texture)
 
 
 def main():
@@ -17,41 +46,45 @@ def main():
     )
     evaluator = RealEvaluator(eval_cfg)
 
-    # Build GA instance sizes from real exported data:
     num_patches = len(evaluator.patch_ids)
     num_seams = len(evaluator.constraints)
 
-    # Fix everything except (kappa, w)
     inst = GAInstance(
         num_patches=num_patches,
         num_internal_seams=num_seams,
         K=eval_cfg.K,
-        fixed_delta=evaluator.delta_baseline,                 # fixed geometry
-        fixed_rho=np.zeros((num_patches,), dtype=int),        # fixed rotations for now
-        fixed_pi=np.arange(num_patches, dtype=int),           # fixed ordering for now
+        fixed_delta=evaluator.delta_baseline,
+        fixed_rho=np.zeros((num_patches,), dtype=int),
+        fixed_pi=np.arange(num_patches, dtype=int),
         fixed_h=0,
     )
 
     cfg = GAConfig(
         seed=0,
-        population_size=4,
-        generations=2,
+        population_size=6,
+        generations=3,
         elite_count=1,
         tournament_k=3,
         crossover_prob=0.7,
         mutation_prob=0.7,
-        prob_flip_kappa=0.25,
+        prob_flip_kappa=0.35,
         weight_sigma=0.20,
     )
 
     pop = run_ga(inst, evaluator, cfg)
-
     best = min(pop, key=lambda ind: ind.fitness.values.sum())
-    print("\n=== BEST INDIVIDUAL ===")
-    print("F:", best.fitness.values)
-    print("kappa:", best.genome.kappa)
-    print("w (first 10):", best.genome.w[:10])
-    print("meta:", best.meta)
+
+    # Build a baseline genome: kappa=0 for all, weights=1 for all
+    base = deepcopy(best.genome)
+    base.kappa[:] = 0
+    base.w[:] = 1.0
+
+    print("\nBEST fitness:", best.fitness.values)
+    print("BEST kappa:", best.genome.kappa)
+
+    # Show baseline vs best NESTING (collision-free by construction)
+    nest_and_show(eval_cfg.latest_root, evaluator.instance.texture, eval_cfg.fabric_width_mm, base, eval_cfg.K, "BASELINE (kappa=0)")
+    nest_and_show(eval_cfg.latest_root, evaluator.instance.texture, eval_cfg.fabric_width_mm, best.genome, eval_cfg.K, "BEST (GA kappa)")
 
 
 if __name__ == "__main__":
