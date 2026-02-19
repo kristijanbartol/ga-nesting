@@ -26,6 +26,18 @@
                 "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
             },
             "console": "integratedTerminal"
+        },
+
+        {
+            "name": "Test phase utils",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/test_phase_utils.py",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
+            },
+            "console": "integratedTerminal"
         }
     ]
 }

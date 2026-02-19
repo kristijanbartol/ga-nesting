@@ -1,139 +1,198 @@
 \documentclass[runningheads]{llncs}
 %
 \usepackage[T1]{fontenc}
-% T1 fonts will be used to generate the final print and online PDFs,
-% so please use T1 fonts in your manuscript whenever possible.
-% Other font encondings may result in incorrect characters.
-%
 \usepackage{graphicx}
-% Used for displaying a sample figure. If possible, figure files should
-% be included in EPS format.
-%
-% If you use the hyperref package, please uncomment the following two lines
-% to display URLs in blue roman font according to Springer's eBook style:
-%\usepackage{color}
-%\renewcommand\UrlFont{\color{blue}\rmfamily}
-%\urlstyle{rm}
-
 \usepackage{amsmath}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,fit,calc}
-
 \usepackage{caption}
 \usepackage{subcaption}
 
 \begin{document}
-%
-\title{Pattern Layout Optimization for \\Seam-Aware Texture Alignment}
 
-\section{Formal Problem Specification: Simultaneous Topology and Layout Optimization}
-\label{chap:formal_spec}
+\title{Pattern Layout Optimization for \\ Seam-Aware Texture Alignment}
+
+\section{Formal Problem Specification: Seam Topology and Texture-Aware Nesting}
 
 \subsection{Problem Domain and Inputs}
 
-We define the problem as a tuple $\Psi = \langle M, \mathcal{T}, \mathcal{L}, \Omega \rangle$, where:
+We define the problem as
+\[
+\Psi = \langle M, \mathcal{T}, \mathcal{L}, \Omega \rangle,
+\]
+where:
 
 \begin{itemize}
-    \item $M = (V, E, F)$ is the input discrete manifold (triangle mesh) representing the 3D garment surface.
-    \item $\mathcal{T}: \mathbf{R}^2 \to \mathbf{R}^k$ is the periodic texture field defined on the fabric domain. We assume $\mathcal{T}$ is characterized by a lattice basis $B = \{\mathbf{u}, \mathbf{v}\}$ and a signal function $\tau(\mathbf{x})$.
-    \item $\mathcal{L} = \{L_1, \dots, L_m\}$ is a set of anatomical landmarks on $M$, where each $L_j \subset F$ is a constrained region (subset of faces) defining the valid domain for a specific seam keypoint.
-    \item $\Omega = [0, W] \times [0, \infty)$ is the fabric domain, a semi-infinite strip of fixed width $W \in \mathbf{R}^+$.
+    \item $M = (V,E,F)$ is the 3D garment mesh.
+    \item $\mathcal{T}$ is a periodic texture defined over the fabric plane.
+    \item The periodicity is characterized by a lattice basis $B = \{\mathbf{u}, \mathbf{v}\}$.
+    \item $\mathcal{L} = \{L_1, \dots, L_m\}$ defines admissible regions for seam keypoints.
+    \item $\Omega = [0,W] \times [0,\infty)$ is the fabric domain.
 \end{itemize}
 
 \subsection{Decision Variables (Genotype)}
 
-A candidate solution is a vector $\mathbf{x} = \langle \boldsymbol{\delta}, \boldsymbol{\rho}, \boldsymbol{\alpha}, \pi, h \rangle$ defined as follows:
+A candidate solution is
 
-\subsubsection{Geometric Topology Parameters ($\boldsymbol{\delta}$)}
-Let $K = \{k_1, \dots, k_m\}$ be the set of mobile seam endpoints.
-$\boldsymbol{\delta} \in [0, 1]^m$ is a vector of normalized coordinates.
-For each $j \in \{1, \dots, m\}$, the position of keypoint $k_j$ is given by a mapping function $\Gamma_j: [0, 1] \to M$, where $\Gamma_j(\delta_j)$ returns a point on the surface within the region $L_j$.
-The set of seams $\mathcal{S}$ is the fixed topological graph connecting vertices in $K$. A specific realization of seam geometry is the set of geodesic paths $G(\boldsymbol{\delta}) = \{g_s \mid s \in \mathcal{S}\}$, where $g_s$ is the shortest path on $M$ between the computed locations of its endpoints.
+\[
+\mathbf{x} =
+\langle
+\boldsymbol{\delta},
+\boldsymbol{\rho},
+\boldsymbol{\kappa},
+\mathbf{w},
+\pi,
+h
+\rangle.
+\]
 
-\subsubsection{Fabrication Orientation ($\boldsymbol{\rho}$)}
-Let $P(\boldsymbol{\delta}) = \{p_1, \dots, p_n\}$ be the set of surface charts resulting from cutting $M$ along $G(\boldsymbol{\delta})$.
-$\boldsymbol{\rho} \in \{0, 1, 2, 3\}^n$ is the discrete orientation vector.
-For each chart $p_i$, the fabrication grain rotation is $\theta_i = \rho_i \cdot \frac{\pi}{2}$.
+\subsubsection{Seam Topology ($\boldsymbol{\delta}$)}
 
-\subsubsection{Alignment Logic ($\boldsymbol{\alpha}$)}
-Let $\mathcal{S}_{adj} \subset \mathcal{S}$ be the subset of internal seams connecting two distinct charts.
-$\boldsymbol{\alpha} \in \{0, 1\}^{|\mathcal{S}_{adj}|}$ is the binary constraint vector.
-For a seam $s \in \mathcal{S}_{adj}$ connecting charts $p_i$ and $p_j$:
+Each seam keypoint $k_j$ is defined as
+\[
+k_j = \Gamma_j(\delta_j), \quad \delta_j \in [0,1],
+\]
+where $\Gamma_j$ maps into region $L_j \subset M$.
+
+Seams $s \in \mathcal{S}$ are geodesics between corresponding keypoints.
+
+\subsubsection{Fabric Orientation ($\boldsymbol{\rho}$)}
+
+After cutting along seams, we obtain charts
+\[
+P(\boldsymbol{\delta}) = \{p_1, \dots, p_n\}.
+\]
+
+Each chart has discrete grain orientation
+\[
+\rho_i \in \{0,1,2,3\}, \quad \theta_i = \rho_i \frac{\pi}{2}.
+\]
+
+\subsubsection{Discrete Texture Phase Offsets ($\boldsymbol{\kappa}$)}
+
+To model periodic texture freedom, each chart is assigned a discrete phase bin.
+
+Let $K$ be the number of phase bins per period.
+
+\[
+\kappa_i \in \{0,1,\dots,K-1\}.
+\]
+
+The effective phase shift for chart $p_i$ is
+\[
+\frac{\kappa_i}{K}.
+\]
+
+This represents the discrete repeat offset within the fabric's fundamental period.
+
+\subsubsection{Seam Weights ($\mathbf{w}$)}
+
+For each internal seam $s \in \mathcal{S}_{adj}$,
+\[
+w_s \in [0,1]
+\]
+defines its relative importance.
+
+\subsubsection{Nesting Variables ($\pi, h$)}
+
 \begin{itemize}
-    \item If $\alpha_s = 0$, the seam is \textit{Relaxed}. Texture continuity is optimized but not enforced.
-    \item If $\alpha_s = 1$, the seam is \textit{Locked}. The charts $p_i$ and $p_j$ are subject to a congruency constraint during flattening and a rigid coupling constraint during nesting.
+    \item $\pi \in S_n$ defines placement order.
+    \item $h \in \mathcal{H}$ selects the nesting heuristic.
 \end{itemize}
 
-\subsubsection{Nesting Logic ($\pi, h$)}
-$\pi \in S_n$ is a permutation of $\{1, \dots, n\}$ defining the placement priority.
-$h \in \mathcal{H}$ is an index selecting a heuristic placement function from the set $\mathcal{H} = \{ \text{LeftBottom}, \text{Skyline}, \text{LargestFirst} \}$.
+\subsection{Phenotype: Layout Construction}
 
-\subsection{Phenotype Construction Pipeline}
-The mapping $\Phi: \mathbf{x} \to L$ (from genotype to layout) proceeds in three deterministic stages.
+For each chart $p_i$:
 
-\subsubsection{Stage 1: Constrained Flattening}
-Given the cuts $G(\boldsymbol{\delta})$, we compute the 2D flattening $\phi_i: p_i \to \mathbf{R}^2$ for each chart. The flattening minimizes the isometric distortion energy $E_{iso}(\phi_i)$ subject to boundary conditions defined by $\boldsymbol{\alpha}$.
+\begin{itemize}
+    \item Independently flatten $p_i$ to $\phi_i: p_i \to \mathbf{R}^2$.
+    \item Apply rotation $R(\theta_i)$.
+    \item Determine translation $\mathbf{t}_i \in \Omega$ via nesting heuristic $h$ in order $\pi$.
+\end{itemize}
 
-Let $\partial p_{i,s}$ denote the boundary curve of chart $p_i$ corresponding to seam $s$.
-For every active constraint $\alpha_s = 1$ connecting $p_i, p_j$:
-\begin{equation}
-    \text{minimize } \sum E_{iso} \quad \text{s.t. } \quad \phi_i(\partial p_{i,s}) \cong \phi_j(\partial p_{j,s})
-\end{equation}
-where $\cong$ denotes geometric congruence up to a rigid transformation consistent with the texture symmetries of $\mathcal{T}$.
-If $\alpha_s = 0$, the boundary is free.
+Charts must satisfy
 
-\subsubsection{Stage 2: Cluster Assembly}
-We form a set of rigid nesting items $\mathcal{I}$. Initially, $\mathcal{I} = \{ \phi_1(p_1), \dots, \phi_n(p_n) \}$.
-We process constraints $\boldsymbol{\alpha}$ iteratively. For each $s$ with $\alpha_s = 1$:
-\begin{enumerate}
-    \item Identify items $I_u, I_v \in \mathcal{I}$ containing the adjacent boundaries of $s$.
-    \item Compute the unique rigid transformation $T_{v \to u}$ that aligns the boundary $\partial p_{j,s}$ with $\partial p_{i,s}$ such that the texture lattice $B$ is continuous.
-    \item Merge $I_u$ and $I_v$ into a new super-item $I_{new} = I_u \cup T_{v \to u}(I_v)$.
-    \item Update $\mathcal{I} \leftarrow (\mathcal{I} \setminus \{I_u, I_v\}) \cup \{I_{new}\}$.
-\end{enumerate}
-The process terminates when all active constraints are satisfied.
+\begin{align}
+(\phi_i(p_i) + \mathbf{t}_i) \cap (\phi_j(p_j) + \mathbf{t}_j) &= \emptyset, \\
+(\phi_i(p_i) + \mathbf{t}_i) &\subset \Omega.
+\end{align}
 
-\subsubsection{Stage 3: Heuristic Nesting}
-Let $\mathcal{I}_{final}$ be the set of assembled clusters. The nesting algorithm places each item $I \in \mathcal{I}_{final}$ into $\Omega$.
-\begin{enumerate}
-    \item \textbf{Rotation:} Apply rotation $R(\theta_{base})$ to $I$. Note that for clusters, relative rotations of sub-parts are fixed in Stage 2; only the global cluster orientation varies.
-    \item \textbf{Ordering:} Sort $\mathcal{I}_{final}$ according to the permutation $\pi$ (using the index of the primary root component of each cluster).
-    \item \textbf{Placement:} For each $I_k$, find position $\mathbf{t}^* \in \Omega$ such that:
-    \begin{equation}
-        \mathbf{t}^* = \underset{\mathbf{t}}{\arg\min} \,\, \text{Cost}_h(\mathbf{t}, I_k, \mathcal{L}_{prev})
-    \end{equation}
-    subject to:
-    \begin{align}
-        (I_k + \mathbf{t}) \cap (I_{prev} + \mathbf{t}_{prev}) = \emptyset \quad \forall I_{prev} \in \mathcal{L}_{prev} \\
-        (I_k + \mathbf{t}) \subset \Omega
-    \end{align}
-    where $\text{Cost}_h$ is the cost function of heuristic $h$ (e.g., max y-coordinate).
-    \item \textbf{Lattice Snapping:} If $I_k$ contains no locked seams ($\alpha=0$ for all internal edges), update $\mathbf{t}^* \leftarrow \text{Snap}(\mathbf{t}^*, B)$ to align with the texture phase.
-\end{enumerate}
+\subsection{Texture Phase Evaluation}
+
+Let $\mathrm{Phase}(\mathbf{x})$ denote the lattice phase of fabric position $\mathbf{x}$,
+computed using basis $B$ and reduced modulo one period.
+
+For chart $p_i$, the effective phase at fabric point $\mathbf{x}$ is
+
+\[
+\mathrm{Phase}_i(\mathbf{x}) =
+\mathrm{Phase}(\mathbf{x}) +
+\frac{\kappa_i}{K}.
+\]
+
+Phase is evaluated modulo one.
+
+\paragraph{Wrapped Phase Difference}
+
+Given two phases $\phi_a$ and $\phi_b$ in $[0,1)$,
+their wrapped difference is defined as
+
+\[
+\Delta(\phi_a, \phi_b)
+=
+\min\left(
+|\phi_a - \phi_b|,
+1 - |\phi_a - \phi_b|
+\right).
+\]
+
+\subsection{Seam Phase Mismatch}
+
+For seam $s$ connecting charts $p_i$ and $p_j$,
+let $l$ parameterize corresponding seam points.
+
+The seam phase mismatch is defined as
+
+\[
+\mathrm{Mismatch}(s)
+=
+\frac{1}{L_s}
+\int_0^{L_s}
+\Delta(
+\mathrm{Phase}_i(\mathbf{x}_i(l)),
+\mathrm{Phase}_j(\mathbf{x}_j(l))
+)
+\, dl.
+\]
 
 \subsection{Objective Functions}
 
-The fitness vector $\mathbf{F}(\mathbf{x}) = [f_1, f_2, f_3]^T$ is evaluated on the final layout.
+The fitness vector is
 
-\paragraph{1. Fabric Efficiency ($f_1$)}
-\begin{equation}
-    f_1(\mathbf{x}) = \max_{p \in \text{Layout}} (y_{max}(p))
-\end{equation}
-The total length of the fabric marker used.
+\[
+\mathbf{F}(\mathbf{x}) = [f_1, f_2, f_3]^T.
+\]
 
-\paragraph{2. Texture Discontinuity ($f_2$)}
-Let $\mathcal{S}_{relaxed} = \{s \in \mathcal{S}_{adj} \mid \alpha_s = 0\}$.
-\begin{equation}
-    f_2(\mathbf{x}) = \sum_{s \in \mathcal{S}_{relaxed}} \int_{0}^{len(s)} \| \nabla \mathcal{T}(\mathbf{u}_i(l)) - \nabla \mathcal{T}(\mathbf{u}_j(l)) \|^2 \, dl
-\end{equation}
-The integral of texture signal deviation along relaxed seams. Note that for locked seams ($\alpha_s=1$), the mismatch is structurally zero by construction in Stage 2.
+\paragraph{Fabric Efficiency}
 
-\paragraph{3. Geometric Distortion ($f_3$)}
-\begin{equation}
-    f_3(\mathbf{x}) = \sum_{i=1}^n E_{iso}(\phi_i)
-\end{equation}
-The sum of conformal energy from Stage 1. This captures the "stress" induced by enforcing straight/congruent seams on curved surfaces.
+\[
+f_1(\mathbf{x}) =
+\max_{p \in \text{Layout}} y_{max}(p).
+\]
 
-%\end{chapter}
+\paragraph{Texture Phase Discontinuity}
+
+\[
+f_2(\mathbf{x}) =
+\sum_{s \in \mathcal{S}_{adj}}
+w_s \cdot \mathrm{Mismatch}(s).
+\]
+
+\paragraph{Flattening Distortion}
+
+\[
+f_3(\mathbf{x}) =
+\sum_{i=1}^n E_{iso}(\phi_i).
+\]
 
 \end{document}
