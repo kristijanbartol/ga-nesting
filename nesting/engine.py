@@ -106,7 +106,6 @@ class NestingEngine:
         sorted_items = sorted(items, key=lambda x: x.area, reverse=True)
 
         for item in sorted_items:
-            item.set_rotation(0) # In GA, this would be item.set_rotation(rho)
             placed = False
             
             # 1. Get current search candidates (proposing Bottom-Left of AABB)

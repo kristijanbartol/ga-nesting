@@ -38,6 +38,30 @@
                 "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
             },
             "console": "integratedTerminal"
+        },
+
+        {
+            "name": "Test global align",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/test_global_align.py",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
+            },
+            "console": "integratedTerminal"
+        },
+
+        {
+            "name": "Test GA",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/test_ga.py",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
+            },
+            "console": "integratedTerminal"
         }
     ]
 }
