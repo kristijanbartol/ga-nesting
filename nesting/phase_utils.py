@@ -201,9 +201,29 @@ def seam_phase_mismatch(
     diff = np.abs(phi_i - phi_j)           # (N, 2)
     delta = np.minimum(diff, 1.0 - diff)   # (N, 2)
 
-    # Mean over both axes per point, then mean over points
+    # Per-point mismatch: mean over both axes
     mismatch_per_point = delta.mean(axis=1)   # (N,)
-    return float(weight * mismatch_per_point.mean())
+
+    # Arc-length weighting (trapezoidal rule, approximates the 1/L_s integral).
+    # Segment lengths are computed on the i-side; pairs are ordered along the seam.
+    # For N=1 fall back to uniform (no neighbours to compute a length from).
+    if pts_i.shape[0] < 2:
+        return float(weight * mismatch_per_point.mean())
+
+    seg_lengths = np.linalg.norm(np.diff(pts_i, axis=0), axis=1)  # (N-1,)
+    # Trapezoid weights: each interior point owns half of its left and right segment.
+    arc_weights = np.empty(pts_i.shape[0], dtype=float)
+    arc_weights[0]    = seg_lengths[0] / 2.0
+    arc_weights[1:-1] = (seg_lengths[:-1] + seg_lengths[1:]) / 2.0
+    arc_weights[-1]   = seg_lengths[-1] / 2.0
+
+    total_length = arc_weights.sum()
+    if total_length < 1e-12:
+        # Degenerate seam (all points coincide): fall back to uniform mean
+        return float(weight * mismatch_per_point.mean())
+
+    # Weighted mean ~ (1/L) * integral Delta dl
+    return float(weight * np.dot(arc_weights, mismatch_per_point) / total_length)
 
 
 # Alias kept for backward compatibility with existing callers

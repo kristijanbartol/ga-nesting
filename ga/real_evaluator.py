@@ -115,10 +115,55 @@ class RealEvaluator:
             w = float(weights[i]) if i < weights.size else 1.0
             weighted_constraints.append(type(c)(c.patch_i, c.patch_j, c.pairs, w, c.name))
 
-        # Initial transforms: identity
-        T0 = {pid: Rigid2D(0.0, 0.0, 0.0) for pid in self.patch_ids}
+        # --- STEP 1: NESTING ---
+        # Run nesting on original patch geometry to get fabric positions.
+        import re
+        loader = PatchLoader(self.cfg.latest_root)
+        items = loader.load_items()
 
-        # Stage2 solve (global per connected component)
+        def _pid_from_item(it) -> int:
+            m = re.search(r"patch_(\d+)", it.name)
+            return int(m.group(1)) if m else 10**9
+
+        items = sorted(items, key=_pid_from_item)
+
+        # Apply discrete grain rotations (rho).
+        for it in items:
+            pid = _pid_from_item(it)
+            if 1 <= pid <= g.rho.size:
+                it.set_rotation(float((int(g.rho[pid - 1]) % 4) * 90))
+
+        # Apply kappa phase offsets for texture snapping.
+        tx = self.instance.texture.period_x
+        ty = self.instance.texture.period_y
+        for it in items:
+            pid = _pid_from_item(it)
+            k = int(g.kappa[pid - 1]) if (pid - 1) < g.kappa.size else 0
+            it.phase_offset = ((k / float(self.cfg.K)) * tx,
+                               (k / float(self.cfg.K)) * ty)
+
+        pi = None
+        if g.pi is not None and getattr(g.pi, "size", 0) == len(items):
+            pi = [int(x) for x in g.pi.tolist()]
+
+        nest_engine = NestingEngine(fabric_width=self.cfg.fabric_width_mm, texture_spec=self.instance.texture)
+        fabric_state = nest_engine.nest(items, permutation=pi, rotations=g.rho, heuristic=int(getattr(g, "h", 0)))
+        f1 = float(fabric_state.total_height)
+
+        # --- STEP 2: STAGE2 with nesting positions as initial transforms ---
+        # Extract Rigid2D from nesting result: (x, y) placement + rotation.
+        import math
+        nesting_transforms = {}
+        for it, cx, cy, _ in fabric_state.placed_items:
+            pid = _pid_from_item(it)
+            theta = math.radians(it.current_rotation)
+            nesting_transforms[pid] = Rigid2D(theta, cx, cy)
+
+        # Fill any patches not placed (shouldn't happen, but be safe).
+        for pid in self.patch_ids:
+            if pid not in nesting_transforms:
+                nesting_transforms[pid] = Rigid2D(0.0, 0.0, 0.0)
+
         Tsol = solve_global_alignment_all_components(
             patch_ids=self.patch_ids,
             constraints=weighted_constraints,
@@ -126,12 +171,12 @@ class RealEvaluator:
             lattice=self.lattice,
             kappas_by_id=kappas_by_id,
             K=K,
-            initial_transforms=T0,
+            initial_transforms=nesting_transforms,
             max_iters=15,
             verbose=False,
         )
 
-        # f2: total seam phase mismatch after solve (scalar)
+        # --- STEP 3: f2 from Stage2 result ---
         f2 = 0.0
         for c in weighted_constraints:
             Ti = Tsol.get(c.patch_i, Rigid2D(0, 0, 0))
@@ -150,60 +195,6 @@ class RealEvaluator:
                 transform_i=Ti,
                 transform_j=Tj,
             )
-
-        # f1: run nesting on boundary polygons (existing loader uses centered boundary loops)
-        # We keep it minimal: use existing nesting loader + engine, ignore Stage2 transforms for nesting for now.
-        loader = PatchLoader(self.cfg.latest_root)
-        items = loader.load_items()
-        
-        import re
-        # Sort items by patch id so genome.rho / genome.pi (indexed by patch_id-1)
-        # deterministically map to the correct NestingItem.
-        def _pid_from_item(it) -> int:
-            m = re.search(r"patch_(\d+)", it.name)
-            return int(m.group(1)) if m else 10**9
-
-        items = sorted(items, key=_pid_from_item)
-        
-        # --- APPLY DISCRETE GRAIN ROTATIONS (rho) FOR NESTING ---
-        # For nesting, only the SHAPE orientation matters; Stage2 translations are irrelevant.
-        for it in items:
-            pid = _pid_from_item(it)
-            if 1 <= pid <= g.rho.size:
-                it.set_rotation(float((int(g.rho[pid - 1]) % 4) * 90))
-        
-        # Apply GA kappa to nesting: per-item phase offset affects texture snapping lattice
-        # item.name is like "patch_02" -> patch id = 2
-        tx = self.instance.texture.period_x
-        ty = self.instance.texture.period_y
-
-        for it in items:
-            m = re.search(r"patch_(\d+)", it.name)
-            if not m:
-                continue
-            pid = int(m.group(1))
-
-            # genome.kappa indexed by patch id-1 (assuming ids start at 1)
-            if (pid - 1) < g.kappa.size:
-                k = int(g.kappa[pid - 1])
-            else:
-                k = 0
-
-            # Discrete phase shift within one period:
-            # shift both axes for now (simple). Later we can separate u/v.
-            ox = (k / float(self.cfg.K)) * tx
-            oy = (k / float(self.cfg.K)) * ty
-            it.phase_offset = (ox, oy)
-
-        # rotations are fixed for now (rho not optimized yet); later we can set per-item from g.rho.
-        # Optional nesting order from genome.pi (interpreted as indices into items sorted by patch id)
-        pi = None
-        if g.pi is not None and getattr(g.pi, "size", 0) == len(items):
-            pi = [int(x) for x in g.pi.tolist()]
-
-        nest_engine = NestingEngine(fabric_width=self.cfg.fabric_width_mm, texture_spec=self.instance.texture)
-        fabric_state = nest_engine.nest(items, permutation=pi, rotations=g.rho, heuristic=int(getattr(g, "h", 0)))
-        f1 = float(fabric_state.total_height)
 
         # f3 placeholder
         f3 = 0.0
