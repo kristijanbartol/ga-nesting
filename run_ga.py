@@ -31,13 +31,6 @@ def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome,
     loader = PatchLoader(latest_root)
     items = loader.load_items()
 
-    # Deterministic mapping patch_id <-> genome index
-    import re
-    def _pid(it):
-        m = re.search(r"patch_(\d+)", it.name)
-        return int(m.group(1)) if m else 10**9
-    items = sorted(items, key=_pid)
-
     # 1) Apply kappa -> phase_offset (snap lattice shift)
     apply_kappa_to_items(items, genome, K, texture)
 
@@ -70,30 +63,24 @@ def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome,
     )
 
     # 3) Apply Stage2 transforms to the actual nested geometry
+    import re
     for it in items:
-        pid = _pid(it)
-        if pid >= 10**9:
+        m = re.search(r"patch_(\d+)", it.name)
+        if not m:
             continue
+        pid = int(m.group(1))
         T = Tsol.get(pid, Rigid2D(0, 0, 0))
 
         it.original_vertices = T.apply(it.original_vertices)
         it.set_rotation(it.current_rotation)  # rebuild polygon
-        
-    # Apply discrete grain rotations (rho) after Stage2 bake (visualization only)
-    for it in items:
-        pid = _pid(it)
-        if 1 <= pid <= genome.rho.size:
-            it.set_rotation(float((int(genome.rho[pid - 1]) % 4) * 90))
 
     # 4) Nest + visualize
     eng = NestingEngine(fabric_width=fabric_width, texture_spec=texture)
-    pi = None
-    if genome.pi is not None and getattr(genome.pi, "size", 0) == len(items):
-        pi = [int(x) for x in genome.pi.tolist()]
-    fabric = eng.nest(items, permutation=pi, heuristic=int(getattr(genome, "h", 0)))
+    fabric = eng.nest(items)
 
     print(f"{title}: height={fabric.total_height:.2f}")
     visualize_layout(fabric, texture)
+
 
 
 def main():
@@ -118,8 +105,7 @@ def main():
         fixed_delta=evaluator.delta_baseline,
         fixed_rho=np.zeros((num_patches,), dtype=int),
         fixed_pi=np.arange(num_patches, dtype=int),
-        fixed_h=None,
-        num_heuristics=3,
+        fixed_h=0,
     )
 
     cfg = GAConfig(
