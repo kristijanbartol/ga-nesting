@@ -51,15 +51,15 @@ class RealEvaluatorConfig:
     latest_root: str = "results/pattern/latest"
     seam_dir: str = "data/seamlines/upper"
 
-    # texture lattice in SAME UNITS as loaded vertices (we use mm)
     period_u_mm: float = 50.0
     period_v_mm: float = 50.0
-
-    # phase bins
     K: int = 8
+    fabric_width_mm: float = 150.0 * 1000.0
 
-    # fabric width for nesting (mm): instance uses meters? your nesting uses mm scale.
-    fabric_width_mm: float = 150.0 * 1000.0  # default matches test_geometry fabric_width=150.0 *1000
+    # fitness weights: set w1=0, w2=1 to optimize only texture alignment
+    w1: float = 1.0  # fabric height
+    w2: float = 1.0  # seam phase mismatch
+    w3: float = 0.0  # flattening distortion (stub)
 
 
 class RealEvaluator:
@@ -198,4 +198,4 @@ class RealEvaluator:
         f3 = 0.0
         ind.meta["f1_height_mm"] = f1
         ind.meta["f2_phase"] = f2
-        return Fitness(np.array([f1, f2, f3], dtype=float))
+        return Fitness(np.array([self.cfg.w1 * f1, self.cfg.w2 * f2, self.cfg.w3 * f3], dtype=float))

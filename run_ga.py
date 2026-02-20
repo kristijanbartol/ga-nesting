@@ -93,7 +93,13 @@ def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome,
     fabric = eng.nest(items, permutation=pi, heuristic=int(getattr(genome, "h", 0)))
 
     print(f"{title}: height={fabric.total_height:.2f}")
-    visualize_layout(fabric, texture)
+    visualize_layout(fabric, texture, title=title)
+
+    # Plot per-seam phase mismatch
+    from nesting.vis_utils import plot_seam_mismatch
+    import re
+    kappas_by_id = {pid: int(genome.kappa[pid-1]) for pid in patch_ids if (pid-1) < genome.kappa.size}
+    plot_seam_mismatch(weighted_constraints, V_full_by_id, lattice, kappas_by_id, K, Tsol, title)
 
 
 def main():
@@ -105,6 +111,8 @@ def main():
         period_v_mm=50.0,
         K=8,
         fabric_width_mm=150.0 * 10.0,
+        w1=0,
+        w2=1
     )
     evaluator = RealEvaluator(eval_cfg)
 
