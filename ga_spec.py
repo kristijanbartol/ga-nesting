@@ -16,6 +16,7 @@ class GAInstance:
     num_patches: int
     num_internal_seams: int
     K: int  # phase bins
+    num_landmarks: int = 0  # needed for delta dimensionality (2 * num_landmarks)
 
     # Optional: fixed values to keep pipeline simple initially
     fixed_delta: Optional[np.ndarray] = None
@@ -105,7 +106,8 @@ def random_genome(inst: GAInstance, rng: random.Random) -> Genome:
     num_p = inst.num_patches
     num_s = inst.num_internal_seams
 
-    delta = inst.fixed_delta.copy() if inst.fixed_delta is not None else np.zeros((0,), dtype=float)
+    delta = inst.fixed_delta.copy() if inst.fixed_delta is not None else \
+        np.array([rng.random() for _ in range(2 * inst.num_landmarks)], dtype=float)
 
     # Discrete grain rotations (rho): 0..3 (multiples of 90deg)
     if inst.fixed_rho is not None:
@@ -140,6 +142,13 @@ def crossover(g1: Genome, g2: Genome, inst: GAInstance, rng: random.Random) -> T
     - rho: uniform per gene (0..3)
     - pi: choose whole permutation from one parent (keeps validity)
     """
+    # delta: uniform per gene, clamp to [0,1]
+    d1, d2 = g1.delta.copy(), g2.delta.copy()
+    if inst.fixed_delta is None:
+        for i in range(d1.size):
+            if rng.random() < 0.5:
+                d1[i], d2[i] = d2[i], d1[i]
+
     # kappa
     k1, k2 = g1.kappa.copy(), g2.kappa.copy()
     for i in range(k1.size):
@@ -169,8 +178,8 @@ def crossover(g1: Genome, g2: Genome, inst: GAInstance, rng: random.Random) -> T
     else:
         h1, h2 = g2.h, g1.h
 
-    c1 = Genome(delta=g1.delta, rho=r1, kappa=k1, w=w1, pi=p1, h=int(h1))
-    c2 = Genome(delta=g2.delta, rho=r2, kappa=k2, w=w2, pi=p2, h=int(h2))
+    c1 = Genome(delta=d1, rho=r1, kappa=k1, w=w1, pi=p1, h=int(h1))
+    c2 = Genome(delta=d2, rho=r2, kappa=k2, w=w2, pi=p2, h=int(h2))
     return c1, c2
 
 
@@ -180,6 +189,12 @@ def mutate(g: Genome, inst: GAInstance, cfg: GAConfig, rng: random.Random) -> Ge
     rho = g.rho.copy()
     pi = g.pi.copy()
     w = g.w.copy()
+    delta = g.delta.copy()
+
+    # gaussian noise on delta, clamp to [0,1]
+    if inst.fixed_delta is None and delta.size > 0:
+        delta = delta + np.random.normal(0.0, cfg.weight_sigma, size=delta.shape)
+        delta = np.clip(delta, 0.0, 1.0)
 
     # flip some kappas
     for i in range(kappa.size):
@@ -209,7 +224,7 @@ def mutate(g: Genome, inst: GAInstance, cfg: GAConfig, rng: random.Random) -> Ge
         H = max(1, int(inst.num_heuristics))
         h = int(rng.randrange(H))
 
-    return Genome(delta=g.delta, rho=rho, kappa=kappa, w=w, pi=pi, h=h)
+    return Genome(delta=delta, rho=rho, kappa=kappa, w=w, pi=pi, h=h)
 
 
 def evaluate_population(pop: List[Individual], evaluator: Evaluator) -> None:

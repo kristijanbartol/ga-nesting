@@ -103,45 +103,70 @@ class RealEvaluator:
     def __call__(self, ind: Individual) -> Fitness:
         g = ind.genome
         K = self.cfg.K
+        import re
 
-        # Map per-patch kappa: assume patch IDs are 1..N corresponding to kappa[0..N-1]
-        kappas_by_id = {pid: int(g.kappa[pid - 1]) for pid in self.patch_ids if (pid - 1) < g.kappa.size}
+        # --- STEP 0: Geometry pipeline with this individual's delta ---
+        # Regenerates patches and seams on disk for this delta.
+        try:
+            run_geometry_blackbox(self.instance, self.mesh, g.delta, garment_part=self.cfg.garment_part)
+            constraints = load_seam_constraints_from_dir(self.cfg.seam_dir, weights_by_filename={}, default_weight=1.0)
+            V_full_by_id = load_patch_vertices_full_from_latest(self.cfg.latest_root, garment_part=self.cfg.garment_part, scale_mm=1000.0)
+            patch_ids = sorted(V_full_by_id.keys())
+        except Exception as e:
+            print(f"[Evaluator] Geometry failed: {e}, returning penalty fitness.")
+            return Fitness(np.array([1e6, 1e6, 0.0], dtype=float))
 
-        # Map per-seam weights: constraints are sorted by filename; w[i] applies to constraints[i]
-        # If genome has fewer weights than constraints, clamp.
-        weights = g.w
+        kappas_by_id = {pid: int(g.kappa[pid - 1]) for pid in patch_ids if (pid - 1) < g.kappa.size}
+
         weighted_constraints = []
-        for i, c in enumerate(self.constraints):
-            w = float(weights[i]) if i < weights.size else 1.0
+        for i, c in enumerate(constraints):
+            w = float(g.w[i]) if i < g.w.size else 1.0
             weighted_constraints.append(type(c)(c.patch_i, c.patch_j, c.pairs, w, c.name))
 
-        # --- STEP 1: NESTING ---
-        # Run nesting on original patch geometry to get fabric positions.
-        import re
-        loader = PatchLoader(self.cfg.latest_root)
-        items = loader.load_items()
-
-        def _pid_from_item(it) -> int:
+        def _pid(it) -> int:
             m = re.search(r"patch_(\d+)", it.name)
             return int(m.group(1)) if m else 10**9
 
-        items = sorted(items, key=_pid_from_item)
+        # --- STEP 1: Stage2 from identity ---
+        # Finds small phase-aligning rigid transforms in parametric space.
+        T0 = {pid: Rigid2D(0.0, 0.0, 0.0) for pid in patch_ids}
+        Tsol = solve_global_alignment_all_components(
+            patch_ids=patch_ids,
+            constraints=weighted_constraints,
+            patch_vertices_by_id=V_full_by_id,
+            lattice=self.lattice,
+            kappas_by_id=kappas_by_id,
+            K=K,
+            initial_transforms=T0,
+            max_iters=15,
+            verbose=False,
+        )
 
-        # Apply discrete grain rotations (rho).
+        # --- STEP 2: Apply Stage2 transforms to patch geometry ---
+        loader = PatchLoader(self.cfg.latest_root)
+        items = loader.load_items()
+        items = sorted(items, key=_pid)
+
         for it in items:
-            pid = _pid_from_item(it)
+            pid = _pid(it)
+            T = Tsol.get(pid, Rigid2D(0.0, 0.0, 0.0))
+            it.original_vertices = T.apply(it.original_vertices)
+            it.shape = __import__("shapely.geometry", fromlist=["Polygon"]).Polygon(it.original_vertices)
+
+        # Apply grain rotations (rho) and kappa phase offsets.
+        for it in items:
+            pid = _pid(it)
             if 1 <= pid <= g.rho.size:
                 it.set_rotation(float((int(g.rho[pid - 1]) % 4) * 90))
 
-        # Apply kappa phase offsets for texture snapping.
         tx = self.instance.texture.period_x
         ty = self.instance.texture.period_y
         for it in items:
-            pid = _pid_from_item(it)
+            pid = _pid(it)
             k = int(g.kappa[pid - 1]) if (pid - 1) < g.kappa.size else 0
-            it.phase_offset = ((k / float(self.cfg.K)) * tx,
-                               (k / float(self.cfg.K)) * ty)
+            it.phase_offset = ((k / float(K)) * tx, (k / float(K)) * ty)
 
+        # --- STEP 3: Nesting on phase-aligned geometry -> f1 ---
         pi = None
         if g.pi is not None and getattr(g.pi, "size", 0) == len(items):
             pi = [int(x) for x in g.pi.tolist()]
@@ -150,33 +175,7 @@ class RealEvaluator:
         fabric_state = nest_engine.nest(items, permutation=pi, rotations=g.rho, heuristic=int(getattr(g, "h", 0)))
         f1 = float(fabric_state.total_height)
 
-        # --- STEP 2: STAGE2 with nesting positions as initial transforms ---
-        # Extract Rigid2D from nesting result: (x, y) placement + rotation.
-        import math
-        nesting_transforms = {}
-        for it, cx, cy, _ in fabric_state.placed_items:
-            pid = _pid_from_item(it)
-            theta = math.radians(it.current_rotation)
-            nesting_transforms[pid] = Rigid2D(theta, cx, cy)
-
-        # Fill any patches not placed (shouldn't happen, but be safe).
-        for pid in self.patch_ids:
-            if pid not in nesting_transforms:
-                nesting_transforms[pid] = Rigid2D(0.0, 0.0, 0.0)
-
-        Tsol = solve_global_alignment_all_components(
-            patch_ids=self.patch_ids,
-            constraints=weighted_constraints,
-            patch_vertices_by_id=self.V_full_by_id,
-            lattice=self.lattice,
-            kappas_by_id=kappas_by_id,
-            K=K,
-            initial_transforms=nesting_transforms,
-            max_iters=15,
-            verbose=False,
-        )
-
-        # --- STEP 3: f2 from Stage2 result ---
+        # --- STEP 4: f2 from Stage2 result ---
         f2 = 0.0
         for c in weighted_constraints:
             Ti = Tsol.get(c.patch_i, Rigid2D(0, 0, 0))
@@ -185,8 +184,8 @@ class RealEvaluator:
             kj = kappas_by_id.get(c.patch_j, 0)
             f2 += seam_phase_mismatch_scalar(
                 seam_pairs=c.pairs,
-                patch_i_vertices_xy=self.V_full_by_id[c.patch_i],
-                patch_j_vertices_xy=self.V_full_by_id[c.patch_j],
+                patch_i_vertices_xy=V_full_by_id[c.patch_i],
+                patch_j_vertices_xy=V_full_by_id[c.patch_j],
                 lattice=self.lattice,
                 kappa_i=ki,
                 kappa_j=kj,
@@ -196,10 +195,7 @@ class RealEvaluator:
                 transform_j=Tj,
             )
 
-        # f3 placeholder
         f3 = 0.0
-
         ind.meta["f1_height_mm"] = f1
         ind.meta["f2_phase"] = f2
-
         return Fitness(np.array([f1, f2, f3], dtype=float))
