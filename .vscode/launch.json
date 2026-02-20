@@ -5,10 +5,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Test geometry",
+            "name": "Run geometry",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/test_geometry.py",
+            "program": "${workspaceFolder}/run_geometry.py",
             "cwd": "${workspaceFolder}",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
@@ -17,10 +17,10 @@
         },
 
         {
-            "name": "Test nesting",
+            "name": "Run nesting",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/test_nesting.py",
+            "program": "${workspaceFolder}/run_nesting.py",
             "cwd": "${workspaceFolder}",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
@@ -29,10 +29,10 @@
         },
 
         {
-            "name": "Test phase utils",
+            "name": "Run phase utils",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/test_phase_utils.py",
+            "program": "${workspaceFolder}/run_phase_utils.py",
             "cwd": "${workspaceFolder}",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
@@ -41,10 +41,10 @@
         },
 
         {
-            "name": "Test global align",
+            "name": "Run global align",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/test_global_align.py",
+            "program": "${workspaceFolder}/run_global_align.py",
             "cwd": "${workspaceFolder}",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
@@ -53,15 +53,32 @@
         },
 
         {
-            "name": "Test GA",
+            "name": "Run GA",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/test_ga.py",
+            "program": "${workspaceFolder}/run_ga.py",
             "cwd": "${workspaceFolder}",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
             },
             "console": "integratedTerminal"
+        },
+
+        {
+            "name": "Debug pytest (all tests)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "-s",
+                "tests"
+            ],
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
         }
     ]
 }

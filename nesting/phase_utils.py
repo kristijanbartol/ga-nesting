@@ -146,7 +146,7 @@ def seam_phase_residuals_uv(
     return r
 
 
-def seam_phase_mismatch_scalar(
+def seam_phase_mismatch(
     seam_pairs: List[Tuple[int, int]],
     patch_i_vertices_xy: np.ndarray,
     patch_j_vertices_xy: np.ndarray,
@@ -159,19 +159,52 @@ def seam_phase_mismatch_scalar(
     transform_j: Optional[Rigid2D] = None,
 ) -> float:
     """
-    Simple scalar mismatch: mean of absolute wrapped residual components,
-    multiplied by weight.
+    Spec-compliant seam phase mismatch (f2 contribution for one seam).
+
+    For each corresponding pair of seam points, computes the wrapped absolute
+    phase difference per lattice axis:
+
+        Delta(phi_a, phi_b) = min(|phi_a - phi_b|, 1 - |phi_a - phi_b|)
+
+    in [0, 0.5].  The per-point mismatch is the mean of the U and V deltas.
+    The seam mismatch is the mean over all pairs (approximating the 1/L integral),
+    scaled by weight:
+
+        Mismatch(s) = weight * mean_over_pairs( mean(Delta_u, Delta_v) )
+
+    weight=0 returns 0.0 immediately.
     """
-    r = seam_phase_residuals_uv(
-        seam_pairs, patch_i_vertices_xy, patch_j_vertices_xy, lattice,
-        kappa_i, kappa_j, K, weight, transform_i, transform_j
-    )
-    if r.size == 0:
+    if weight <= 0.0 or len(seam_pairs) == 0:
         return 0.0
-    # r already has sqrt(weight); convert to "weighted mismatch" similar scale:
-    # use mean absolute and multiply by sqrt(weight) again? No. Keep consistent:
-    # interpret mismatch ~ mean(|du|,|dv|) * weight.
-    # r = sqrt(w)*d -> d = r/sqrt(w)
-    w = max(weight, 1e-12)
-    d = np.abs(r) / np.sqrt(w)
-    return float(weight * np.mean(d))
+    if K <= 0:
+        raise ValueError("K must be positive")
+
+    idx_i = np.array([a for (a, _) in seam_pairs], dtype=int)
+    idx_j = np.array([b for (_, b) in seam_pairs], dtype=int)
+
+    pts_i = patch_i_vertices_xy[idx_i]
+    pts_j = patch_j_vertices_xy[idx_j]
+
+    if transform_i is not None:
+        pts_i = transform_i.apply(pts_i)
+    if transform_j is not None:
+        pts_j = transform_j.apply(pts_j)
+
+    phi_i = phase_uv(pts_i, lattice)   # (N, 2) in [0,1)
+    phi_j = phase_uv(pts_j, lattice)   # (N, 2) in [0,1)
+
+    # Apply kappa offsets then re-wrap to [0,1)
+    phi_i = frac(phi_i + (kappa_i / float(K)))
+    phi_j = frac(phi_j + (kappa_j / float(K)))
+
+    # Wrapped absolute difference per axis: Delta in [0, 0.5]
+    diff = np.abs(phi_i - phi_j)           # (N, 2)
+    delta = np.minimum(diff, 1.0 - diff)   # (N, 2)
+
+    # Mean over both axes per point, then mean over points
+    mismatch_per_point = delta.mean(axis=1)   # (N,)
+    return float(weight * mismatch_per_point.mean())
+
+
+# Alias kept for backward compatibility with existing callers
+seam_phase_mismatch_scalar = seam_phase_mismatch
