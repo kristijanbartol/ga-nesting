@@ -156,30 +156,24 @@ class RealEvaluator:
         loader = PatchLoader(self.cfg.latest_root)
         items = loader.load_items()
         
-        # --- APPLY STAGE2 TRANSFORMS TO GEOMETRY BEFORE NESTING ---
-
-        # For each NestingItem, modify its geometry using Stage2 solution
-        for it in items:
-            import re
+        import re
+        # Sort items by patch id so genome.rho / genome.pi (indexed by patch_id-1)
+        # deterministically map to the correct NestingItem.
+        def _pid_from_item(it) -> int:
             m = re.search(r"patch_(\d+)", it.name)
-            if not m:
-                continue
+            return int(m.group(1)) if m else 10**9
 
-            pid = int(m.group(1))
-
-            T = Tsol.get(pid, Rigid2D(0.0, 0.0, 0.0))
-
-            # Apply rigid transform to original vertices
-            V = it.original_vertices
-            Vt = T.apply(V)
-
-            # Replace geometry
-            it.original_vertices = Vt
-            it.set_rotation(0.0)  # rebuild polygon with new geometry
+        items = sorted(items, key=_pid_from_item)
+        
+        # --- APPLY DISCRETE GRAIN ROTATIONS (rho) FOR NESTING ---
+        # For nesting, only the SHAPE orientation matters; Stage2 translations are irrelevant.
+        for it in items:
+            pid = _pid_from_item(it)
+            if 1 <= pid <= g.rho.size:
+                it.set_rotation(float((int(g.rho[pid - 1]) % 4) * 90))
         
         # Apply GA kappa to nesting: per-item phase offset affects texture snapping lattice
         # item.name is like "patch_02" -> patch id = 2
-        import re
         tx = self.instance.texture.period_x
         ty = self.instance.texture.period_y
 
@@ -202,8 +196,13 @@ class RealEvaluator:
             it.phase_offset = (ox, oy)
 
         # rotations are fixed for now (rho not optimized yet); later we can set per-item from g.rho.
+        # Optional nesting order from genome.pi (interpreted as indices into items sorted by patch id)
+        pi = None
+        if g.pi is not None and getattr(g.pi, "size", 0) == len(items):
+            pi = [int(x) for x in g.pi.tolist()]
+
         nest_engine = NestingEngine(fabric_width=self.cfg.fabric_width_mm, texture_spec=self.instance.texture)
-        fabric_state = nest_engine.nest(items)
+        fabric_state = nest_engine.nest(items, permutation=pi, rotations=g.rho, heuristic=int(getattr(g, "h", 0)))
         f1 = float(fabric_state.total_height)
 
         # f3 placeholder

@@ -100,17 +100,49 @@ class NestingEngine:
         self.width = fabric_width
         self.texture = texture_spec # e.g., TextureSpec(period_x=10, period_y=50)
 
-    def nest(self, items: List) -> FabricState:
+    def nest(
+        self,
+        items: List,
+        permutation: Optional[List[int]] = None,
+        rotations: Optional[List[int]] = None,
+        heuristic: Optional[object] = None,
+    ) -> FabricState:
         fabric = FabricState(self.width)
-        # Sort Largest Area First
-        sorted_items = sorted(items, key=lambda x: x.area, reverse=True)
+        
+        # Optional: pick an ordering (pi). If not provided, fall back to largest-area-first.
+        if permutation is None:
+            sorted_items = sorted(items, key=lambda x: x.area, reverse=True)
+        else:
+            # permutation is interpreted as indices into the provided `items` list.
+            sorted_items = []
+            seen = set()
+            for idx in permutation:
+                idx = int(idx)
+                if 0 <= idx < len(items) and idx not in seen:
+                    sorted_items.append(items[idx])
+                    seen.add(idx)
+            # Append any remaining items (stable) to keep behavior robust.
+            for i, it in enumerate(items):
+                if i not in seen:
+                    sorted_items.append(it)
+
+        # Optional: apply per-item discrete rotations (rho) in 90-degree steps.
+        # rotations is a list aligned with `items` (same indexing). Values are 0..3.
+        if rotations is not None:
+            for i, it in enumerate(items):
+                if i < len(rotations):
+                    r = int(rotations[i]) % 4
+                    it.set_rotation(float(r * 90))
+
+        # Heuristic is currently fixed (Bottom-Left candidates). Kept for API completeness.
+        _ = heuristic
 
         for item in sorted_items:
             placed = False
             
             # 1. Get current search candidates (proposing Bottom-Left of AABB)
             # We use a simple Skyline/Bottom-Left hybrid
-            candidates = self._get_candidates(fabric)
+            candidates = self._get_candidates(fabric, item, int(heuristic or 0))
             
             for (cx, cy) in candidates:
                 # 2. COORDINATE CONVERSION
@@ -163,11 +195,27 @@ class NestingEngine:
 
         return fabric
 
-    def _get_candidates(self, fabric) -> List[Tuple[float, float]]:
-        """Proposes Bottom-Left corner locations."""
+    def _get_candidates(self, fabric: FabricState, item: NestingItem, h: int) -> List[Tuple[float, float]]:
+        """Proposes candidate bottom-left corner locations.
+
+        Heuristic selector (h):
+          0: Bottom-Left (sort by y, then x)  [default]
+          1: Left-Bottom (sort by x, then y)
+          2: Min-Height (sort by predicted top edge, then x)
+        """
         pts = [(0.0, 0.0)]
         for _, _, _, poly in fabric.placed_items:
             minx, miny, maxx, maxy = poly.bounds
-            pts.append((maxx, miny)) # To the right
-            pts.append((minx, maxy)) # On top
+            pts.append((maxx, miny))
+            pts.append((minx, maxy))
+
+        mode = h % 3
+        if mode == 1:
+            return sorted(pts, key=lambda p: (p[0], p[1]))
+
+        if mode == 2:
+            minx, miny, maxx, maxy = item.shape.bounds
+            item_h = maxy - miny
+            return sorted(pts, key=lambda p: (p[1] + item_h, p[0]))
+
         return sorted(pts, key=lambda p: (p[1], p[0]))
