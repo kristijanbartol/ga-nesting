@@ -45,7 +45,7 @@ def parameterize(hyperparams_config={}):
         result = subprocess.run(
             command, 
             check=True, 
-            capture_output=True, 
+            capture_output=False, 
             text=True,
             env=os.environ.copy()
         )

@@ -132,10 +132,10 @@ def main():
 
     cfg = GAConfig(
         seed=0,
-        population_size=6,
-        generations=3,
-        elite_count=1,
-        tournament_k=3,
+        population_size=20,
+        generations=10,
+        elite_count=2,
+        tournament_k=4,
         crossover_prob=0.7,
         mutation_prob=0.7,
         prob_flip_kappa=0.35,
