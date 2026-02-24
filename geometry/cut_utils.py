@@ -18,15 +18,19 @@ def perform_global_cut(paths_to_cut, vertices, faces):
     cut_vertices, cut_faces, cut_indices = _cut_paths(paths_to_cut, vertices, faces)
 
     compute_ref_embedding(ref_vertices, ref_faces, cut_vertices)
-    
+
     adjacency_matrix = create_adjacency_matrix(faces)
     cut_mesh = trimesh.Trimesh(vertices=cut_vertices, faces=cut_faces, process=False)
 
-    v_patch_idxs_dict, excluded_patch_idxs = flood_fill_vertex_patches_with_multilabels(cut_mesh, cut_indices)   
-            
+    v_patch_idxs_dict, excluded_patch_idxs, updated_cut_indices = flood_fill_vertex_patches_with_multilabels(cut_mesh, cut_indices)
+
+    # Fix 4: early exit if all polylines are empty after excluding boundary-only vertices
+    if all(len(cut_idxs) == 0 for cut_idxs in updated_cut_indices):
+        raise RuntimeError("All cut polylines empty after excluding boundary vertices — mesh cut produced no valid seams.")
+
     patches, patch_faces, valid_patch_idxs, vertex_patch_index_map = extract_and_save_patch_meshes(cut_mesh, v_patch_idxs_dict, excluded_patch_idxs)
-    
-    seamlines_dict_list, symmetric_seamline_flags = extract_seamlines(patches, cut_indices, valid_patch_idxs, vertex_patch_index_map)
+
+    seamlines_dict_list, symmetric_seamline_flags = extract_seamlines(patches, updated_cut_indices, valid_patch_idxs, vertex_patch_index_map)
     
     # 1. Flatten index list
     all_indices = np.concatenate(cut_indices)
@@ -128,10 +132,19 @@ def flood_fill_vertex_patches_with_multilabels(mesh, polylines):
     whether the vertex is already visited OR whether it's a boundary vertex, and if not,
     traverses the patch in a BFS fashion.
     '''
-    boundary_set = set([x for xs in polylines for x in xs])
+    boundary_list = [x for xs in polylines for x in xs]
+    boundary_set = set(boundary_list)
+    # Fix 3: track junction points — vertices shared by more than one cut polyline.
+    junction_points = set(v for v, count in Counter(boundary_list).items() if count > 1)
+
     V, F = mesh.vertices, mesh.faces
 
-    # The adjacency dictionary is used for faster and more convenient traversal.
+    # Precompute per-vertex polyline membership for O(1) lookup during BFS.
+    vertex_to_polyline_idxs = defaultdict(list)
+    for polyline_idx, polyline in enumerate(polylines):
+        for v in polyline:
+            vertex_to_polyline_idxs[v].append(polyline_idx)
+
     adjacency = defaultdict(set)
     for face in F:
         for i in range(3):
@@ -142,65 +155,85 @@ def flood_fill_vertex_patches_with_multilabels(mesh, polylines):
 
     patch_idxs_dict = defaultdict(set)  # for each vertex, store a set of corresponding patch labels
     current_patch_idx = 0               # start with label=0 and increment when unexplored patch is found
-    excluded_patch_idxs = set()         # the excluded patches are the ones that contain excluded vertices (predefined and fixed)
+    excluded_patch_idxs = set()         # excluded patches contain predefined excluded vertices
 
-    # Some vertices remain unreached by traversal, yet surrounded by already-labeled vertices (boundaries).
-    # To find such vertices, we check whether all the neighboring labels are the same.
-    # Afterward, these vertices are labeled using the labels of their neighbors in a separate for loop below.
     def is_surrounded(v_start):
         neighbor_patch_idxs = [patch_idxs_dict[n] for n in adjacency[v_start]]
         return all(idx == neighbor_patch_idxs[0] and len(idx) == 1 for idx in neighbor_patch_idxs)
 
     for v_start in range(len(V)):
-        # if on the boundary, or already labeled, or "surrounded", do not process (continue)
         if v_start in boundary_set or len(patch_idxs_dict[v_start]) > 0 or is_surrounded(v_start):
             continue
+
         queue = deque([v_start])
         patch_idxs_dict[v_start].add(current_patch_idx)
-        touched_polylines = []      # record which polylines are "touched" so that we add the corresponding idxs later
-        patch_vidxs = [v_start]     # separately record patch idxs to check whether it contains the excluded idxs
+        touched_polylines = []
+        idx_which_touched_polylines = []  # Fix 3: track which vertex first touched each polyline
+        patch_vidxs = [v_start]
 
         while queue:
             v = queue.popleft()
             for nbr in adjacency[v]:
-                # For the boundary vertices, do not label them now. Instead, record the whole polyline as "touched".
                 if nbr in boundary_set:
-                    touched_polylines_idxs = []
-                    for polyline_idx, polyline in enumerate(polylines):
-                        if nbr in polyline:
-                            touched_polylines_idxs.append(polyline_idx)
-                    # However, if the boundary vertex belongs to more than one polyline, do not label as "touched".
-                    # Note that this is not a problem, since the polyline will be touched at some other location.
-                    if len(touched_polylines_idxs) == 1:                        
-                        touched_polylines.append(polylines[touched_polylines_idxs[0]])
+                    nbr_polyline_idxs = vertex_to_polyline_idxs[nbr]
+                    # Only record if the neighbour belongs to exactly one polyline
+                    # (junction vertices belong to multiple and are handled by the DFS stop below).
+                    if len(nbr_polyline_idxs) == 1:
+                        touched_polylines.append(polylines[nbr_polyline_idxs[0]])
+                        idx_which_touched_polylines.append(nbr)
                     continue
 
-                # For the "normal" (non-boundary) neighbors, label them right away and add to the queue for traversal.
                 if len(patch_idxs_dict[nbr]) == 0:
                     queue.append(nbr)
                     patch_idxs_dict[nbr].add(current_patch_idx)
                     patch_vidxs.append(nbr)
-                    
-        # For each touched polyline, label the corresponding vertices along the polylines (with the current label).
-        # Note that, when done for multiple patches (labels), the boundary vertices will "naturally" have multiple labels.
-        for touched_polyline in touched_polylines:
-            for tv in touched_polyline:
-                patch_idxs_dict[tv].add(current_patch_idx)
 
-        # Finally, if the excluded vertex index is part of the patch, label the whole patch as excluded.
+        # Fix 2: skip degenerate tiny patches (e.g. slivers between crossing cut paths).
+        if len(patch_vidxs) < 10:
+            continue
+
+        # Fix 3: junction-aware DFS for boundary labeling.
+        # Traverses each touched polyline segment starting from the touching vertex
+        # and stops when a junction point is reached, preventing label bleed across segments.
+        for idx, touched_polyline in enumerate(touched_polylines):
+            start_v = idx_which_touched_polylines[idx]
+            if current_patch_idx in patch_idxs_dict[start_v]:
+                continue
+            touched_set = set(touched_polyline)
+            neighbours = [start_v]
+            while neighbours:
+                cur_vertex = neighbours.pop()
+                patch_idxs_dict[cur_vertex].add(current_patch_idx)
+                if cur_vertex not in junction_points:
+                    neighbours += [
+                        a for a in adjacency[cur_vertex]
+                        if a in touched_set and current_patch_idx not in patch_idxs_dict[a]
+                    ]
+
         for excluded_vidx in EXCLUDE_PATCH_VIDXS:
             if excluded_vidx in patch_vidxs:
                 excluded_patch_idxs.add(current_patch_idx)
 
         current_patch_idx += 1
 
-    # After the "regular" vertices are processed, the edge cases are the "surrounded" vertices that are now labeled.
+    # Fix 1: correctly resolve unlabeled vertices by unioning neighbour patch labels,
+    # not by adding a raw vertex index (the previous bug).
     for v in range(len(V)):
         if len(patch_idxs_dict[v]) == 0:
-            nbr = next(iter(adjacency[v]))
-            patch_idxs_dict[v].add(nbr)
+            patch_idxs_dict[v] = set().union(*[
+                patch_idxs_dict[nbr]
+                for nbr in adjacency[v] if nbr not in boundary_set
+            ])
 
-    return patch_idxs_dict, excluded_patch_idxs
+    # Fix 4: strip polyline vertices that exclusively border excluded patches,
+    # then return the pruned polylines so the caller can detect degenerate cuts.
+    for idx, polyline in enumerate(polylines):
+        polylines[idx] = [
+            v for v in polyline
+            if not patch_idxs_dict[v].issubset(excluded_patch_idxs)
+        ]
+
+    return patch_idxs_dict, excluded_patch_idxs, polylines
 
 
 def extract_patch(V, face_list):

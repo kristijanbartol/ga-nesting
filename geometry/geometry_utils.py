@@ -24,10 +24,9 @@ class LandmarkMapper:
         self.vertices = instance.mesh_vertices
         
         # Build ONE global tree for the whole mesh.
-        # Since we assume the 4 corners are close to each other, 
-        # the interpolated point won't jump across the body 
+        # Since we assume the 4 corners are close to each other,
+        # the interpolated point won't jump across the body
         # unless the mesh is extremely thin/concave at that spot.
-        print("[Geometry] Building global mesh KDTree...")
         self.global_tree = cKDTree(self.vertices)
 
     def map_genotype_to_vertices(self, delta: np.ndarray) -> np.ndarray:
@@ -77,9 +76,8 @@ def generate_symmetric_landmarks(
     vertices = mesh.vertices
     
     # Build search tree for global nearest neighbor lookup
-    print("[Symmetry] Building mesh KDTree...")
     tree = cKDTree(vertices)
-    
+
     for name, lm in source_landmarks.items():
         # 1. Add Original (assume it is Left)
         l_name = f"{name}_L"
@@ -87,23 +85,22 @@ def generate_symmetric_landmarks(
             name=l_name,
             boundary_corners=lm.boundary_corners
         )
-        
+
         # 2. Compute Symmetric (Right)
         # Flip X coordinate for all 4 corners
         source_coords = vertices[list(lm.boundary_corners)]
         target_coords = source_coords.copy()
-        target_coords[:, 0] *= -1 # Flip X
-        
+        target_coords[:, 0] *= -1  # Flip X
+
         # Find indices of these flipped coordinates
         # k=1 returns (distances, indices)
         _, symmetric_indices = tree.query(target_coords, k=1)
-        
+
         r_name = f"{name}_R"
         full_library[r_name] = LandmarkDefinition(
             name=r_name,
             boundary_corners=tuple(symmetric_indices)
         )
-        print(f"   Generated {r_name} from {l_name}")
 
     return full_library
 

@@ -2,6 +2,7 @@
 import os
 import glob
 import re
+import time
 from dataclasses import dataclass
 from typing import Dict
 
@@ -97,8 +98,11 @@ class RealEvaluator:
         )
 
         print("[RealEvaluator] Initialized.")
-        print("  patches:", self.patch_ids)
-        print("  seams:", len(self.constraints))
+        print(f"  patches: {self.patch_ids}  ({len(self.patch_ids)} total)")
+        print(f"  seams:   {len(self.constraints)}")
+        print(f"  fabric:  {cfg.fabric_width_mm:.0f}mm wide"
+              f"  period={cfg.period_u_mm:.0f}x{cfg.period_v_mm:.0f}mm  K={cfg.K}")
+        print(f"  weights: w1(height)={cfg.w1}  w2(phase)={cfg.w2}  w3(distortion)={cfg.w3}")
 
     def __call__(self, ind: Individual) -> Fitness:
         g = ind.genome
@@ -108,12 +112,14 @@ class RealEvaluator:
         # --- STEP 0: Geometry pipeline with this individual's delta ---
         # Regenerates patches and seams on disk for this delta.
         try:
+            t0 = time.time()
             run_geometry_blackbox(self.instance, self.mesh, g.delta, garment_part=self.cfg.garment_part)
             constraints = load_seam_constraints_from_dir(self.cfg.seam_dir, weights_by_filename={}, default_weight=1.0)
             V_full_by_id = load_patch_vertices_full_from_latest(self.cfg.latest_root, garment_part=self.cfg.garment_part, scale_mm=1000.0)
             patch_ids = sorted(V_full_by_id.keys())
+            t_geo = time.time() - t0
         except Exception as e:
-            print(f"[Evaluator] Geometry failed: {e}, returning penalty fitness.")
+            print(f"         [geo] FAILED: {e} -> penalty fitness")
             return Fitness(np.array([1e6, 1e6, 0.0], dtype=float))
 
         kappas_by_id = {pid: int(g.kappa[pid - 1]) for pid in patch_ids if (pid - 1) < g.kappa.size}
@@ -130,6 +136,7 @@ class RealEvaluator:
         # --- STEP 1: Stage2 from identity ---
         # Finds small phase-aligning rigid transforms in parametric space.
         T0 = {pid: Rigid2D(0.0, 0.0, 0.0) for pid in patch_ids}
+        t0 = time.time()
         Tsol = solve_global_alignment_all_components(
             patch_ids=patch_ids,
             constraints=weighted_constraints,
@@ -141,6 +148,7 @@ class RealEvaluator:
             max_iters=15,
             verbose=False,
         )
+        t_stage2 = time.time() - t0
 
         # --- STEP 2: Apply Stage2 transforms to patch geometry ---
         loader = PatchLoader(self.cfg.latest_root)
@@ -172,7 +180,9 @@ class RealEvaluator:
             pi = [int(x) for x in g.pi.tolist()]
 
         nest_engine = NestingEngine(fabric_width=self.cfg.fabric_width_mm, texture_spec=self.instance.texture)
+        t0 = time.time()
         fabric_state = nest_engine.nest(items, permutation=pi, rotations=g.rho, heuristic=int(getattr(g, "h", 0)))
+        t_nest = time.time() - t0
         f1 = float(fabric_state.total_height)
 
         # --- STEP 4: f2 from Stage2 result ---
@@ -198,4 +208,6 @@ class RealEvaluator:
         f3 = 0.0
         ind.meta["f1_height_mm"] = f1
         ind.meta["f2_phase"] = f2
+        print(f"         [geo={t_geo:.1f}s  stage2={t_stage2:.2f}s  nesting={t_nest:.2f}s]"
+              f"  f1={f1:.1f}mm  f2={f2:.4f}")
         return Fitness(np.array([self.cfg.w1 * f1, self.cfg.w2 * f2, self.cfg.w3 * f3], dtype=float))

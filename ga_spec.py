@@ -227,20 +227,54 @@ def mutate(g: Genome, inst: GAInstance, cfg: GAConfig, rng: random.Random) -> Ge
     return Genome(delta=delta, rho=rho, kappa=kappa, w=w, pi=pi, h=h)
 
 
+def _pop_table(pop: List[Individual], label: str) -> None:
+    pop_sorted = sorted(pop, key=lambda ind: ind.fitness.values.sum())  # type: ignore
+    print(f"\n  {label}")
+    print(f"  {'':1}{'#':>3}  {'sum':>9}  {'f1(mm)':>10}  {'f2':>8}  kappa")
+    for i, ind in enumerate(pop_sorted):
+        marker = "*" if i == 0 else " "
+        f = ind.fitness.values  # type: ignore
+        kappa = ind.genome.kappa.tolist()
+        print(f"  {marker}{i:>3}  {f.sum():>9.4f}  {f[0]:>10.2f}  {f[1]:>8.4f}  {kappa}")
+
+
 def evaluate_population(pop: List[Individual], evaluator: Evaluator) -> None:
-    for ind in pop:
+    total = len(pop)
+    for i, ind in enumerate(pop):
         if ind.fitness is None:
+            kappa = ind.genome.kappa.tolist()
+            delta_mean = float(np.mean(ind.genome.delta)) if ind.genome.delta.size > 0 else float("nan")
+            w = np.round(ind.genome.w, 2).tolist()
+            print(f"  [{i+1}/{total}] kappa={kappa}  delta_mean={delta_mean:.2f}  w={w}")
             ind.fitness = evaluator(ind)
+            f = ind.fitness.values
+            print(f"         -> f1={f[0]:.2f}  f2={f[1]:.4f}  sum={f.sum():.4f}")
 
 
 def run_ga(inst: GAInstance, evaluator: Evaluator, cfg: GAConfig) -> List[Individual]:
     rng = random.Random(cfg.seed)
     np.random.seed(cfg.seed)
 
+    print("=== GA Config ===")
+    print(f"  pop={cfg.population_size}  gens={cfg.generations}  K={inst.K}"
+          f"  elite={cfg.elite_count}  tournament_k={cfg.tournament_k}")
+    print(f"  crossover={cfg.crossover_prob}  mutation={cfg.mutation_prob}"
+          f"  prob_flip_kappa={cfg.prob_flip_kappa}  weight_sigma={cfg.weight_sigma}")
+    print(f"  fixed: delta={'no' if inst.fixed_delta is None else 'yes'}"
+          f"  rho={'no' if inst.fixed_rho is None else 'yes'}"
+          f"  pi={'no' if inst.fixed_pi is None else 'yes'}"
+          f"  h={inst.fixed_h if inst.fixed_h is not None else 'no'}")
+
+    print("\n=== Initial Population ===")
     pop = [Individual(genome=random_genome(inst, rng)) for _ in range(cfg.population_size)]
     evaluate_population(pop, evaluator)
+    _pop_table(pop, "Initial population:")
+
+    prev_best_sum = min(ind.fitness.values.sum() for ind in pop)  # type: ignore
 
     for gen in range(cfg.generations):
+        print(f"\n=== Gen {gen + 1}/{cfg.generations} ===")
+
         pop_sorted = sorted(pop, key=lambda ind: ind.fitness.values.sum())  # type: ignore
         elites = [Individual(genome=e.genome, fitness=e.fitness, meta=dict(e.meta)) for e in pop_sorted[:cfg.elite_count]]
 
@@ -268,7 +302,10 @@ def run_ga(inst: GAInstance, evaluator: Evaluator, cfg: GAConfig) -> List[Indivi
         pop = new_pop
         evaluate_population(pop, evaluator)
 
-        best = min(pop, key=lambda ind: ind.fitness.values.sum())  # type: ignore
-        print(f"[GA] gen {gen:03d} best sum={best.fitness.values.sum():.6f} F={best.fitness.values}")  # type: ignore
+        best_sum = min(ind.fitness.values.sum() for ind in pop)  # type: ignore
+        delta = prev_best_sum - best_sum
+        improvement = f"improved by {delta:.4f}" if delta > 1e-9 else "no improvement"
+        _pop_table(pop, f"Gen {gen + 1} population  ({improvement}):")
+        prev_best_sum = best_sum
 
     return pop
