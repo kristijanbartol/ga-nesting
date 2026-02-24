@@ -2,7 +2,7 @@
 import numpy as np
 from copy import deepcopy
 
-from ga_spec import GAInstance, GAConfig, run_ga, Individual
+from ga_spec import GAInstance, GAConfig, run_ga
 from ga.real_evaluator import RealEvaluator, RealEvaluatorConfig
 from nesting.loader import PatchLoader
 from nesting.engine import NestingEngine

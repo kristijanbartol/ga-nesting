@@ -119,3 +119,33 @@ def extract_side_idx(mesh, idx1, idx2, z_offset: float):
     ref_y = mesh.vertices[idx1][1]
     query_p = np.array([mid_x, ref_y, z_offset])
     return _get_closest_idx(mesh.vertices, query_p)
+
+
+def find_midline_vidx(verts, faces, v_idx, front=True):
+    y = verts[v_idx, 1]
+    sign = 1.0 if front else -1.0
+    # unique undirected edges
+    edges = np.unique(
+        np.sort(np.vstack([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]]), axis=1),
+        axis=0
+    )
+
+    best = (np.inf, None, None, None, 0)  # (score, point, i0, i1)
+    for edge_idx, (i0, i1) in enumerate(edges):
+        v0, v1 = verts[i0], verts[i1]
+        if v0[2] * sign <= 0 or v1[2] * sign <= 0:
+            continue
+        t = (y - v0[1]) / (v1[1] - v0[1])
+        if 0 <= t <= 1:
+            # minimize how far BOTH edge endpoints are from X=0
+            score = max(abs(v0[0]), abs(v1[0]))
+            if score < best[0]:
+                best = (score, v0 + t * (v1 - v0), i0, i1, edge_idx)
+
+    _, p, i0, i1, best_idx = best
+
+    if abs(verts[i0][0]) < abs(verts[i1][0]):
+        return i0
+    else:
+        return i1
+

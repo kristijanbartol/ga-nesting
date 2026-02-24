@@ -33,24 +33,6 @@ def export_seamlines(seamlines_dict_list, symmetric_seamline_flags, garment_part
                     seam_f.write(f'{vidx_pair[0]} {vidx_pair[1]}\n')
 
 
-def prepare_scales(body_mesh, patch, is_skirtified):
-    scale = 1.0
-    scales_u = np.ones(patch.faces.shape[0]) * scale
-    scales_v = np.ones(patch.faces.shape[0])
-
-    #ref_kpts = REF_KPTS_SKIRTIFIED if is_skirtified else REF_KPTS
-    ref_kpts = REF_KPTS
-    top_y = body_mesh.vertices[ref_kpts['lower']['side'][0]][1]
-    bottom_y = np.min(patch.vertices[:, 1])
-    base_stretch = scale
-        
-    mean_face_coords = np.mean(patch.vertices[patch.faces], axis=1)
-    ref_mask = mean_face_coords[:, 1] < top_y
-    scales_u[np.where(ref_mask)] = base_stretch + ((mean_face_coords[ref_mask][:, 1] - top_y) / (bottom_y - top_y)) * (max_stretch - base_stretch)
-
-    return scales_u, scales_v
-
-
 def export_scales(body_mesh, patches, valid_patch_idxs, garment_part, is_skirtified, max_scale=None):
     part_scales_dir = f'data/scales/{garment_part}/'
     if os.path.isdir(part_scales_dir):

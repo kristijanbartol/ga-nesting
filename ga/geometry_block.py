@@ -5,41 +5,21 @@ import trimesh
 from spec import LandmarkDefinition, TextureSpec
 from experiment_loader import load_experiment
 from geometry.geometry_utils import LandmarkMapper, generate_symmetric_landmarks
-from topologies import build_shirt_topology
+from geometry.topologies import build_sleeveless_shirt_topology
 from geometry.cut_utils import perform_global_cut, assign_patch_labels
 from geometry.export import export_data
 from geometry.geometry_processor import BatchBuilder
 from geometry.parameterization import parameterize
-
-
-# === Copied from test_geometry.py (kept identical) ===
-LANDMARKS = {
-    "Neck": LandmarkDefinition(
-        name="Neck",
-        boundary_corners=(4301, 5279, 4199, 4762),
-    ),
-    "Shoulder": LandmarkDefinition(
-        name="Shoulder",
-        boundary_corners=(5274, 6446, 4122, 4723)
-    ),
-    "Armpit": LandmarkDefinition(
-        name="Armpit",
-        boundary_corners=(4755, 4751, 5230, 4163)
-    ),
-    "Waist": LandmarkDefinition(
-        name="Waist",
-        boundary_corners=(6524, 6557, 4984, 4921)
-    )
-}
-ACTIVE_SEAMS = ["Side_L", "Side_R", "Neck_Opening", "Shoulder_R", "Shoulder_L", "Armhole_R", "Armhole_L", "Waist_Hem"]
-SHOULDER_KPT_IDX = 5335
+from geometry.landmarks import CORE_LANDMARKS, SHOULDER_KPT_IDX
+from geometry.topologies import ACTIVE_SEAMS
 
 
 def build_instance(mesh_path: str = "data/SMPL_FEMALE.ply", fabric_width: float = 150.0):
     mesh = trimesh.load(mesh_path, process=False)
 
-    full_landmark_lib = generate_symmetric_landmarks(mesh, LANDMARKS)
-    seams = build_shirt_topology(full_landmark_lib)
+    full_landmark_lib = generate_symmetric_landmarks(mesh, CORE_LANDMARKS)
+    # TODO: call build_*_topology by providing the string key to select the garment type (e.g., "shirt", "pants", "dress")
+    seams = build_sleeveless_shirt_topology(full_landmark_lib)
 
     # same as test_geometry.py (you can change later)
     texture_spec = TextureSpec("Stripes", 10.0, 100.0)

@@ -10,7 +10,7 @@ from geometry.geometry_utils import (
     LandmarkMapper, 
     generate_symmetric_landmarks
 )
-from topologies import build_shirt_topology, build_test_topology
+from topologies import build_sleeveless_shirt_topology, build_test_topology
 from geometry.cut_utils import (
     perform_global_cut, 
     assign_patch_labels
@@ -65,7 +65,7 @@ mesh = trimesh.load('data/SMPL_FEMALE.ply')
 # 2. Generate Full Library (L + R)
 full_landmark_lib = generate_symmetric_landmarks(mesh, LANDMARKS)
 #full_landmark_lib = LANDMARKS
-seams = build_shirt_topology(full_landmark_lib)
+seams = build_sleeveless_shirt_topology(full_landmark_lib)
 #seams = build_test_topology(full_landmark_lib)
 
 texture_spec = TextureSpec("Stripes", 10.0, 100.0)
