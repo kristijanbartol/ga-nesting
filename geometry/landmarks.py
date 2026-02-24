@@ -65,14 +65,13 @@ CORE_LANDMARKS = {
 }
 
 
-LONG_LANDMARKS = CORE_LANDMARKS.copy()
 LONG_LANDMARKS = {
     "Upper": {
-        "Arm_Up": LandmarkDefinition(
+        "Sleeve_Up": LandmarkDefinition(
             name="Sleeve_Up",
             boundary_corners=(6335, 6335, 5400, 5400)
         ),
-        "Arm_Down": LandmarkDefinition(
+        "Sleeve_Down": LandmarkDefinition(
             name="Sleeve_Down",
             boundary_corners=(5391, 5391, 5398, 5398)
         )
@@ -89,14 +88,13 @@ LONG_LANDMARKS = {
     }
 }
 
-SHORT_LANDMARKS = CORE_LANDMARKS.copy()
 SHORT_LANDMARKS = {
     "Upper": {
-        "Arm_Up": LandmarkDefinition(
+        "Sleeve_Up": LandmarkDefinition(
             name="Sleeve_Up",
             boundary_corners=(5176, 5176, 5184, 5184)
         ),
-        "Arm_Down": LandmarkDefinition(
+        "Sleeve_Down": LandmarkDefinition(
             name="Sleeve_Down",
             boundary_corners=(5137, 5137, 5218, 5218)
         )
@@ -156,5 +154,5 @@ PANT_SEAMS = [
 ]
 ONESIE_SEAMS = []
 
-ACTIVE_SEAMS = SHIRTLESS_SEAMS.copy()
+ACTIVE_SEAMS = SHIRT_SEAMS.copy()
 SHOULDER_KPT_IDX = 5335

@@ -4,57 +4,21 @@
 import numpy as np
 import trimesh
 
-from spec import LandmarkDefinition, TextureSpec
+from spec import TextureSpec
 from experiment_loader import load_experiment
 from geometry.geometry_utils import (
-    LandmarkMapper, 
+    LandmarkMapper,
     generate_symmetric_landmarks
 )
-from topologies import build_sleeveless_shirt_topology, build_test_topology
+from geometry.topologies import build_shirt_topology, build_test_topology
 from geometry.cut_utils import (
-    perform_global_cut, 
+    perform_global_cut,
     assign_patch_labels
 )
 from geometry.export import export_data
 from geometry.geometry_processor import BatchBuilder
 from geometry.parameterization import parameterize
-
-# ==============================================================================
-# 0. MOCK DATA PREPARATION (User Input)
-# ==============================================================================
-
-# Pick these indices manually on your SMPL mesh.
-LANDMARKS = {
-    "Neck": LandmarkDefinition(
-        name="Neck", 
-        boundary_corners=(4301, 5279, 4199, 4762),
-    ),
-    "Shoulder": LandmarkDefinition(
-        name="Shoulder",
-        boundary_corners=(5274, 6446, 4122, 4723)
-    ),
-    "Armpit": LandmarkDefinition(
-        name="Armpit",
-        boundary_corners=(4755, 4751, 5230, 4163)
-    ),
-    "Waist": LandmarkDefinition(
-        name="Waist",
-        boundary_corners=(6524, 6557, 4984, 4921)
-    )
-}
-ACTIVE_SEAMS = ["Side_L", "Side_R", "Neck_Opening", "Shoulder_R", "Shoulder_L", "Armhole_R", "Armhole_L", "Waist_Hem"]
-
-'''
-LANDMARKS = {
-    "1": LandmarkDefinition("1", (4404, 4404, 4404, 4404)),
-    "2": LandmarkDefinition("2", (855, 855, 855, 855)),
-    "3": LandmarkDefinition("3", (921, 921, 921, 921)),
-    "4": LandmarkDefinition("4", (4408, 4408, 4408, 4408))
-}
-ACTIVE_SEAMS = ["s1", "s2", "s3", "s4"]
-'''
-
-SHOULDER_KPT_IDX = 5335
+from geometry.landmarks import CORE_LANDMARKS, LONG_LANDMARKS, SHOULDER_KPT_IDX, ACTIVE_SEAMS
 
 # ==============================================================================
 # 1. SETUP EXPERIMENT
@@ -63,9 +27,8 @@ SHOULDER_KPT_IDX = 5335
 mesh = trimesh.load('data/SMPL_FEMALE.ply')
 
 # 2. Generate Full Library (L + R)
-full_landmark_lib = generate_symmetric_landmarks(mesh, LANDMARKS)
-#full_landmark_lib = LANDMARKS
-seams = build_sleeveless_shirt_topology(full_landmark_lib)
+full_landmark_lib = generate_symmetric_landmarks(mesh, {**CORE_LANDMARKS["Upper"], **LONG_LANDMARKS["Upper"]})
+seams = build_shirt_topology(full_landmark_lib)
 #seams = build_test_topology(full_landmark_lib)
 
 texture_spec = TextureSpec("Stripes", 10.0, 100.0)

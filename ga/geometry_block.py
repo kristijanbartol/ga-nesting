@@ -1,25 +1,25 @@
 # ga_geometry_block.py
+import glob
 import numpy as np
 import trimesh
 
 from spec import LandmarkDefinition, TextureSpec
 from experiment_loader import load_experiment
 from geometry.geometry_utils import LandmarkMapper, generate_symmetric_landmarks
-from geometry.topologies import build_sleeveless_shirt_topology
+from geometry.topologies import build_shirt_topology
 from geometry.cut_utils import perform_global_cut, assign_patch_labels
 from geometry.export import export_data
 from geometry.geometry_processor import BatchBuilder
 from geometry.parameterization import parameterize
-from geometry.landmarks import CORE_LANDMARKS, SHOULDER_KPT_IDX
-from geometry.topologies import ACTIVE_SEAMS
+from geometry.landmarks import CORE_LANDMARKS, LONG_LANDMARKS, SHOULDER_KPT_IDX, ACTIVE_SEAMS
 
 
 def build_instance(mesh_path: str = "data/SMPL_FEMALE.ply", fabric_width: float = 150.0):
     mesh = trimesh.load(mesh_path, process=False)
 
-    full_landmark_lib = generate_symmetric_landmarks(mesh, CORE_LANDMARKS)
+    full_landmark_lib = generate_symmetric_landmarks(mesh, {**CORE_LANDMARKS["Upper"], **LONG_LANDMARKS["Upper"]})
     # TODO: call build_*_topology by providing the string key to select the garment type (e.g., "shirt", "pants", "dress")
-    seams = build_sleeveless_shirt_topology(full_landmark_lib)
+    seams = build_shirt_topology(full_landmark_lib)
 
     # same as test_geometry.py (you can change later)
     texture_spec = TextureSpec("Stripes", 10.0, 100.0)
@@ -69,3 +69,18 @@ def run_geometry_blackbox(instance, mesh, delta_uv: np.ndarray, garment_part: st
 
     # writes results/pattern/latest/.../optim_final-seams.ply
     parameterize()
+
+    output_pattern = f"results/pattern/latest/{garment_part}/patch_*/optim_final-seams.ply"
+    output_files = glob.glob(output_pattern)
+    if not output_files:
+        raise RuntimeError(
+            f"Geometry blackbox produced no output files at '{output_pattern}'. "
+            "Check parameterization logs above for errors."
+        )
+    for fpath in output_files:
+        verts = trimesh.load(fpath, process=False).vertices
+        if np.any(np.isnan(verts)):
+            raise RuntimeError(
+                f"Parameterization produced NaN coordinates in '{fpath}'. "
+                "Check parameterization logs above for errors."
+            )
