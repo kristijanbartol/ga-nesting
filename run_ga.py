@@ -112,7 +112,7 @@ def main():
         K=8,
         fabric_width_mm=150.0 * 10.0,
         w1=1,
-        w2=1
+        w2=10
     )
     evaluator = RealEvaluator(eval_cfg)
 

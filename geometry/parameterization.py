@@ -39,18 +39,15 @@ def parameterize(hyperparams_config={}):
             if value is not None:  # Only add if value is specified
                 command.extend([cpp_param, str(value)])
     
-    print(f"Running command: {' '.join(command)}")
-    
     try:
         result = subprocess.run(
             command,
             check=True,
-            capture_output=False,
+            capture_output=True,
             text=True,
             timeout=30,
             env=os.environ.copy()
         )
-        print(f"Program output: {result.stdout}")
         return result
     except subprocess.TimeoutExpired as e:
         e.process.kill()
