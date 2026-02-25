@@ -52,6 +52,21 @@ def perform_global_cut(paths_to_cut, vertices, faces):
 
 # cut all paths in the list of indices of paths_to_cut
 def _cut_paths(kp_batch, vertices, faces):
+    # Validate: degenerate paths (start == end or consecutive duplicates) cause the
+    # geodesic solver to hang indefinitely, so reject them early.
+    for i, path in enumerate(kp_batch):
+        if path[0] == path[-1]:
+            raise RuntimeError(
+                f"Degenerate seam path {i}: start vertex == end vertex ({path[0]}). "
+                "Two landmarks resolved to the same mesh vertex — try a different delta."
+            )
+        for j in range(len(path) - 1):
+            if path[j] == path[j + 1]:
+                raise RuntimeError(
+                    f"Degenerate seam path {i}: consecutive identical vertices at "
+                    f"position {j} (vertex {path[j]})."
+                )
+
     path_solver = pp3d.ExtendedEdgeFlipGeodesicSolver(vertices, faces)
     kp_coordinates = []
 

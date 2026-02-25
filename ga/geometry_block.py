@@ -1,5 +1,6 @@
 # ga_geometry_block.py
 import glob
+import multiprocessing
 import numpy as np
 import trimesh
 
@@ -84,3 +85,50 @@ def run_geometry_blackbox(instance, mesh, delta_uv: np.ndarray, garment_part: st
                 f"Parameterization produced NaN coordinates in '{fpath}'. "
                 "Check parameterization logs above for errors."
             )
+
+
+def _geometry_worker(instance, mesh_V, mesh_F, delta_uv, garment_part, result_queue):
+    """Child-process target: reconstruct mesh, run blackbox, push result."""
+    try:
+        mesh = trimesh.Trimesh(vertices=mesh_V, faces=mesh_F, process=False)
+        run_geometry_blackbox(instance, mesh, delta_uv, garment_part=garment_part)
+        result_queue.put(None)          # None => success
+    except Exception as e:
+        result_queue.put(repr(e))       # string => error
+
+
+def run_geometry_blackbox_timeout(instance, mesh, delta_uv: np.ndarray,
+                                   garment_part: str = "upper", timeout: int = 60):
+    """
+    Run run_geometry_blackbox in a forked subprocess with a hard wall-clock timeout.
+
+    This is necessary because the potpourri3d C++ geodesic solver can hang
+    indefinitely on degenerate mesh configurations.  Python-level timeouts
+    (signal.alarm, Thread) cannot interrupt native C++ code that holds the GIL;
+    only os.kill can.
+    """
+    # 'fork' inherits the parent's sys.path and loaded modules, avoiding the
+    # re-import overhead and path issues that come with 'spawn' on macOS.
+    ctx = multiprocessing.get_context("fork")
+    result_queue = ctx.Queue()
+    p = ctx.Process(
+        target=_geometry_worker,
+        args=(instance, mesh.vertices, mesh.faces, delta_uv, garment_part, result_queue),
+    )
+    p.start()
+    p.join(timeout=timeout)
+
+    if p.is_alive():
+        p.terminate()
+        p.join(timeout=3)
+        if p.is_alive():
+            p.kill()
+            p.join()
+        raise RuntimeError(
+            f"Geometry blackbox killed after {timeout}s — C++ geodesic solver hung"
+        )
+
+    if not result_queue.empty():
+        err = result_queue.get_nowait()
+        if err is not None:
+            raise RuntimeError(err)

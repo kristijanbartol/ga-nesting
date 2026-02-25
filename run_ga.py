@@ -124,8 +124,8 @@ def main():
         num_internal_seams=num_seams,
         K=eval_cfg.K,
         num_landmarks=evaluator.instance.num_landmarks,
-        fixed_rho=np.zeros((num_patches,), dtype=int),
-        fixed_pi=np.arange(num_patches, dtype=int),
+        fixed_rho=None,
+        fixed_pi=None,
         fixed_h=None,
         num_heuristics=3,
     )

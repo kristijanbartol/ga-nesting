@@ -15,7 +15,18 @@ from nesting.stage2_global_align import load_seam_constraints_from_dir, solve_gl
 from nesting.loader import PatchLoader
 from nesting.engine import NestingEngine
 
-from .geometry_block import build_instance, run_geometry_blackbox
+from .geometry_block import build_instance, run_geometry_blackbox_timeout
+
+
+def _rho_rotate_verts(verts_xy: np.ndarray, rho: int) -> np.ndarray:
+    """Rotate 2D vertices by rho * 90° CCW (matches NestingItem.set_rotation convention)."""
+    r = rho % 4
+    if r == 0:
+        return verts_xy
+    theta = r * np.pi / 2.0
+    c, s = float(np.cos(theta)), float(np.sin(theta))
+    R = np.array([[c, -s], [s, c]], dtype=float)
+    return verts_xy @ R.T
 
 
 def _parse_patch_id(patch_dirname: str) -> int:
@@ -80,7 +91,7 @@ class RealEvaluator:
         self.delta_baseline = np.array([0.5, 0.5] * self.instance.num_landmarks, dtype=float)
 
         # 3) Run geometry blackbox ONCE to generate results/pattern/latest and data/seamlines
-        run_geometry_blackbox(self.instance, self.mesh, self.delta_baseline, garment_part=cfg.garment_part)
+        run_geometry_blackbox_timeout(self.instance, self.mesh, self.delta_baseline, garment_part=cfg.garment_part)
 
         # 4) Load seam constraints list once (order is stable: sorted filenames)
         self.constraints = load_seam_constraints_from_dir(cfg.seam_dir, weights_by_filename={}, default_weight=1.0)
@@ -113,14 +124,16 @@ class RealEvaluator:
         # Regenerates patches and seams on disk for this delta.
         try:
             t0 = time.time()
-            run_geometry_blackbox(self.instance, self.mesh, g.delta, garment_part=self.cfg.garment_part)
+            print("         [geo] running...", flush=True)
+            run_geometry_blackbox_timeout(self.instance, self.mesh, g.delta, garment_part=self.cfg.garment_part)
             constraints = load_seam_constraints_from_dir(self.cfg.seam_dir, weights_by_filename={}, default_weight=1.0)
             V_full_by_id = load_patch_vertices_full_from_latest(self.cfg.latest_root, garment_part=self.cfg.garment_part, scale_mm=1000.0)
             patch_ids = sorted(V_full_by_id.keys())
             t_geo = time.time() - t0
         except Exception as e:
             print(f"         [geo] FAILED: {e} -> penalty fitness")
-            return Fitness(np.array([1e6, 1e6, 0.0], dtype=float))
+            penalty = 1e6 / self.cfg.fabric_width_mm  # normalised, same scale as f1_norm
+            return Fitness(np.array([self.cfg.w1 * penalty, self.cfg.w2 * penalty, 0.0], dtype=float))
 
         kappas_by_id = {pid: int(g.kappa[pid - 1]) for pid in patch_ids if (pid - 1) < g.kappa.size}
 
@@ -137,6 +150,7 @@ class RealEvaluator:
         # Finds small phase-aligning rigid transforms in parametric space.
         T0 = {pid: Rigid2D(0.0, 0.0, 0.0) for pid in patch_ids}
         t0 = time.time()
+        print("         [stage2] running...", flush=True)
         Tsol = solve_global_alignment_all_components(
             patch_ids=patch_ids,
             constraints=weighted_constraints,
@@ -181,33 +195,49 @@ class RealEvaluator:
 
         nest_engine = NestingEngine(fabric_width=self.cfg.fabric_width_mm, texture_spec=self.instance.texture)
         t0 = time.time()
+        print("         [nesting] running...", flush=True)
         fabric_state = nest_engine.nest(items, permutation=pi, rotations=g.rho, heuristic=int(getattr(g, "h", 0)))
         t_nest = time.time() - t0
         f1 = float(fabric_state.total_height)
 
-        # --- STEP 4: f2 from Stage2 result ---
+        # --- STEP 4: f2 in fabric space (Stage2 transform + rho rotation) ---
+        # Stage2 produces small corrective transforms in parameterisation space.
+        # After nesting, each patch is additionally rotated by rho * 90°.  We must
+        # apply that same rotation here so that f2 reflects the actual stripe
+        # direction seen on the physical fabric — a 90°-rotated patch has
+        # perpendicular stripes and must be penalised accordingly.
         f2 = 0.0
         for c in weighted_constraints:
             Ti = Tsol.get(c.patch_i, Rigid2D(0, 0, 0))
             Tj = Tsol.get(c.patch_j, Rigid2D(0, 0, 0))
             ki = kappas_by_id.get(c.patch_i, 0)
             kj = kappas_by_id.get(c.patch_j, 0)
+            rho_i = int(g.rho[c.patch_i - 1]) % 4 if (c.patch_i - 1) < g.rho.size else 0
+            rho_j = int(g.rho[c.patch_j - 1]) % 4 if (c.patch_j - 1) < g.rho.size else 0
+            # Apply Stage2 transform, then rho rotation to get fabric-space coords.
+            Vi = _rho_rotate_verts(Ti.apply(V_full_by_id[c.patch_i]), rho_i)
+            Vj = _rho_rotate_verts(Tj.apply(V_full_by_id[c.patch_j]), rho_j)
             f2 += seam_phase_mismatch_scalar(
                 seam_pairs=c.pairs,
-                patch_i_vertices_xy=V_full_by_id[c.patch_i],
-                patch_j_vertices_xy=V_full_by_id[c.patch_j],
+                patch_i_vertices_xy=Vi,
+                patch_j_vertices_xy=Vj,
                 lattice=self.lattice,
                 kappa_i=ki,
                 kappa_j=kj,
                 K=K,
                 weight=c.weight,
-                transform_i=Ti,
-                transform_j=Tj,
+                transform_i=None,   # already baked into Vi / Vj
+                transform_j=None,
             )
 
         f3 = 0.0
+        # Normalise f1 by fabric width so both objectives are dimensionless and
+        # w1 / w2 become true priority knobs rather than unit-conversion factors.
+        # f1_norm ≈ 0.5–3.0  (fabric height as a multiple of fabric width)
+        # f2      ≈ 0.0–0.5 per seam (phase mismatch, already normalised)
+        f1_norm = f1 / self.cfg.fabric_width_mm
         ind.meta["f1_height_mm"] = f1
         ind.meta["f2_phase"] = f2
         print(f"         [geo={t_geo:.1f}s  stage2={t_stage2:.2f}s  nesting={t_nest:.2f}s]"
               f"  f1={f1:.1f}mm  f2={f2:.4f}")
-        return Fitness(np.array([self.cfg.w1 * f1, self.cfg.w2 * f2, self.cfg.w3 * f3], dtype=float))
+        return Fitness(np.array([self.cfg.w1 * f1_norm, self.cfg.w2 * f2, self.cfg.w3 * f3], dtype=float))

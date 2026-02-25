@@ -241,8 +241,12 @@ def _pop_table(pop: List[Individual], label: str) -> None:
     for i, ind in enumerate(pop_sorted):
         marker = "*" if i == 0 else " "
         f = ind.fitness.values  # type: ignore
+        # Use raw (unweighted) values from meta when available; fall back to
+        # the weighted fitness component only for penalty/failed individuals.
+        f1 = ind.meta.get("f1_height_mm", f[0])
+        f2 = ind.meta.get("f2_phase", f[1])
         kappa = ind.genome.kappa.tolist()
-        print(f"  {marker}{i:>3}  {f.sum():>9.4f}  {f[0]:>10.2f}  {f[1]:>8.4f}  {kappa}")
+        print(f"  {marker}{i:>3}  {f.sum():>9.4f}  {f1:>10.2f}  {f2:>8.4f}  {kappa}")
 
 
 def evaluate_population(pop: List[Individual], evaluator: Evaluator) -> None:
@@ -255,7 +259,9 @@ def evaluate_population(pop: List[Individual], evaluator: Evaluator) -> None:
             print(f"  [{i+1}/{total}] kappa={kappa}  delta_mean={delta_mean:.2f}  w={w}")
             ind.fitness = evaluator(ind)
             f = ind.fitness.values
-            print(f"         -> f1={f[0]:.2f}  f2={f[1]:.4f}  sum={f.sum():.4f}")
+            f1 = ind.meta.get("f1_height_mm", f[0])
+            f2 = ind.meta.get("f2_phase", f[1])
+            print(f"         -> f1={f1:.2f}mm  f2={f2:.4f}  sum={f.sum():.4f}")
 
 
 def run_ga(inst: GAInstance, evaluator: Evaluator, cfg: GAConfig) -> List[Individual]:

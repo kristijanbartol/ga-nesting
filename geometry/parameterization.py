@@ -43,14 +43,22 @@ def parameterize(hyperparams_config={}):
     
     try:
         result = subprocess.run(
-            command, 
-            check=True, 
-            capture_output=False, 
+            command,
+            check=True,
+            capture_output=False,
             text=True,
+            timeout=30,
             env=os.environ.copy()
         )
         print(f"Program output: {result.stdout}")
         return result
+    except subprocess.TimeoutExpired as e:
+        e.process.kill()
+        e.process.wait()
+        raise RuntimeError(
+            f"Parameterization binary timed out after {e.timeout}s — "
+            "likely stuck on a degenerate geometry configuration."
+        )
     except subprocess.CalledProcessError as e:
         print(f"An error occurred while running the C++ program: {e}")
         print(f"Program output: {e.stdout}")
