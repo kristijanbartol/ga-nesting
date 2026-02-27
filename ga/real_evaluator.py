@@ -68,6 +68,13 @@ class RealEvaluatorConfig:
     K: int = 8
     fabric_width_mm: float = 150.0 * 1000.0
 
+    # Number of bodies to nest simultaneously on one fabric roll.
+    # All bodies currently share the same mesh + delta (identical cut).
+    # To extend to different bodies: replace the single geometry call in __call__
+    # with N separate calls (different mesh/delta), write each to a body-specific
+    # directory, and load patches from those directories instead.
+    num_bodies: int = 1
+
     # fitness weights: set w1=0, w2=1 to optimize only texture alignment
     w1: float = 1.0  # fabric height
     w2: float = 1.0  # seam phase mismatch
@@ -166,81 +173,115 @@ class RealEvaluator:
         )
         t_stage2 = time.time() - t0
 
-        # --- STEP 2: Apply Stage2 transforms to patch geometry ---
-        loader = PatchLoader(self.cfg.latest_root, self.cfg.garment_part)
-        items = loader.load_items()
-        items = sorted(items, key=_pid)
+        # --- STEP 2: Build base items (Stage2 transforms applied once, shared across bodies) ---
+        from copy import deepcopy
+        from shapely.geometry import Polygon as _Polygon
 
-        for it in items:
+        loader = PatchLoader(self.cfg.latest_root, self.cfg.garment_part)
+        base_items = loader.load_items()
+        base_items = sorted(base_items, key=_pid)
+        num_base = len(base_items)
+
+        # Apply Stage2 corrective transforms to base item geometry.
+        for it in base_items:
             pid = _pid(it)
             T = Tsol.get(pid, Rigid2D(0.0, 0.0, 0.0))
             it.original_vertices = T.apply(it.original_vertices)
-            it.shape = __import__("shapely.geometry", fromlist=["Polygon"]).Polygon(it.original_vertices)
+            it.shape = _Polygon(it.original_vertices)
+            it.current_rotation = 0.0
 
-        # Apply grain rotations (rho) and kappa phase offsets.
-        for it in items:
-            pid = _pid(it)
-            if 1 <= pid <= g.rho.size:
-                it.set_rotation(float((int(g.rho[pid - 1]) % 4) * 90))
-
+        # --- STEP 3: Clone base items N times, assign per-body kappa / rho ---
+        # Genome layout: kappa[b*M : (b+1)*M] and rho[b*M : (b+1)*M] belong to body b.
+        # Delta (seam positions) and w (seam weights) are shared across all bodies.
+        # To extend to different bodies, replace this loop with N separate geometry
+        # calls (different mesh / delta per body) and load from body-specific dirs.
         tx = self.instance.texture.period_x
         ty = self.instance.texture.period_y
-        for it in items:
-            pid = _pid(it)
-            k = int(g.kappa[pid - 1]) if (pid - 1) < g.kappa.size else 0
-            it.phase_offset = ((k / float(K)) * tx, (k / float(K)) * ty)
+        N = self.cfg.num_bodies
+        M = num_base
+        all_items = []
 
-        # --- STEP 3: Nesting on phase-aligned geometry -> f1 ---
+        for b in range(N):
+            for item_idx, base_it in enumerate(base_items):
+                it = deepcopy(base_it)
+                it.name = f"body_{b}/{base_it.name}"
+
+                pid = _pid(base_it)
+                genome_idx = b * M + item_idx  # flat index into kappa / rho
+
+                # Grain rotation (rho)
+                rho_val = int(g.rho[genome_idx]) % 4 if genome_idx < g.rho.size else 0
+                it.set_rotation(float(rho_val * 90))
+
+                # Phase offset (kappa)
+                k = int(g.kappa[genome_idx]) if genome_idx < g.kappa.size else 0
+                it.phase_offset = ((k / float(K)) * tx, (k / float(K)) * ty)
+
+                all_items.append(it)
+
+        # --- STEP 4: Nest all N*M items on one fabric roll -> f1 ---
+        num_total = N * M
         pi = None
-        if g.pi is not None and getattr(g.pi, "size", 0) == len(items):
+        if g.pi is not None and getattr(g.pi, "size", 0) == num_total:
             pi = [int(x) for x in g.pi.tolist()]
+
+        # rho for the engine call: flat array indexed by position in all_items
+        rho_all = np.array(
+            [int(g.rho[b * M + i]) % 4 if (b * M + i) < g.rho.size else 0
+             for b in range(N) for i in range(M)],
+            dtype=int
+        )
 
         nest_engine = NestingEngine(fabric_width=self.cfg.fabric_width_mm, texture_spec=self.instance.texture)
         t0 = time.time()
         print("         [nesting] running...", flush=True)
-        fabric_state = nest_engine.nest(items, permutation=pi, rotations=g.rho, heuristic=int(getattr(g, "h", 0)))
+        fabric_state = nest_engine.nest(all_items, permutation=pi, rotations=rho_all, heuristic=int(getattr(g, "h", 0)))
         t_nest = time.time() - t0
         f1 = float(fabric_state.total_height)
         ind.meta["fabric_state"] = fabric_state
 
-        # --- STEP 4: f2 in fabric space (Stage2 transform + rho rotation) ---
-        # Stage2 produces small corrective transforms in parameterisation space.
-        # After nesting, each patch is additionally rotated by rho * 90°.  We must
-        # apply that same rotation here so that f2 reflects the actual stripe
-        # direction seen on the physical fabric — a 90°-rotated patch has
-        # perpendicular stripes and must be penalised accordingly.
-        f2 = 0.0
-        for c in weighted_constraints:
-            Ti = Tsol.get(c.patch_i, Rigid2D(0, 0, 0))
-            Tj = Tsol.get(c.patch_j, Rigid2D(0, 0, 0))
-            ki = kappas_by_id.get(c.patch_i, 0)
-            kj = kappas_by_id.get(c.patch_j, 0)
-            rho_i = int(g.rho[c.patch_i - 1]) % 4 if (c.patch_i - 1) < g.rho.size else 0
-            rho_j = int(g.rho[c.patch_j - 1]) % 4 if (c.patch_j - 1) < g.rho.size else 0
+        # --- STEP 5: f2 — phase mismatch averaged across N bodies ---
+        # Each body shares the same seam structure (same weighted_constraints and Tsol)
+        # but may have different kappa/rho assignments.
+        # f2 is averaged over bodies so it stays in [0, 0.5*num_seams] regardless of N.
+        f2_total = 0.0
+        for b in range(N):
+            f2_body = 0.0
+            for c in weighted_constraints:
+                Ti = Tsol.get(c.patch_i, Rigid2D(0, 0, 0))
+                Tj = Tsol.get(c.patch_j, Rigid2D(0, 0, 0))
 
-            # Stripe-direction penalty: rho values that differ by an odd multiple of
-            # 90° produce perpendicular stripes across the seam — no kappa offset can
-            # fix that.  We add the maximum possible phase mismatch (0.5) per seam so
-            # the GA never prefers a perpendicularly-rotated pair over an aligned one.
-            if (rho_i % 2) != (rho_j % 2):
-                f2 += c.weight * 0.5
-                continue
+                # Map patch_id -> flat genome index for this body
+                gi_i = b * M + (c.patch_i - 1)  # patch IDs are 1-based
+                gi_j = b * M + (c.patch_j - 1)
+                ki = int(g.kappa[gi_i]) if gi_i < g.kappa.size else 0
+                kj = int(g.kappa[gi_j]) if gi_j < g.kappa.size else 0
+                rho_i = int(g.rho[gi_i]) % 4 if gi_i < g.rho.size else 0
+                rho_j = int(g.rho[gi_j]) % 4 if gi_j < g.rho.size else 0
 
-            # Apply Stage2 transform, then rho rotation to get fabric-space coords.
-            Vi = _rho_rotate_verts(Ti.apply(V_full_by_id[c.patch_i]), rho_i)
-            Vj = _rho_rotate_verts(Tj.apply(V_full_by_id[c.patch_j]), rho_j)
-            f2 += seam_phase_mismatch_scalar(
-                seam_pairs=c.pairs,
-                patch_i_vertices_xy=Vi,
-                patch_j_vertices_xy=Vj,
-                lattice=self.lattice,
-                kappa_i=ki,
-                kappa_j=kj,
-                K=K,
-                weight=c.weight,
-                transform_i=None,   # already baked into Vi / Vj
-                transform_j=None,
-            )
+                # Stripe-direction penalty: patches rotated by an odd multiple of 90°
+                # relative to each other produce perpendicular stripes at the seam.
+                if (rho_i % 2) != (rho_j % 2):
+                    f2_body += c.weight * 0.5
+                    continue
+
+                Vi = _rho_rotate_verts(Ti.apply(V_full_by_id[c.patch_i]), rho_i)
+                Vj = _rho_rotate_verts(Tj.apply(V_full_by_id[c.patch_j]), rho_j)
+                f2_body += seam_phase_mismatch_scalar(
+                    seam_pairs=c.pairs,
+                    patch_i_vertices_xy=Vi,
+                    patch_j_vertices_xy=Vj,
+                    lattice=self.lattice,
+                    kappa_i=ki,
+                    kappa_j=kj,
+                    K=K,
+                    weight=c.weight,
+                    transform_i=None,
+                    transform_j=None,
+                )
+            f2_total += f2_body
+
+        f2 = f2_total / N  # average, scale-invariant across different N
 
         f3 = 0.0
         # Normalise f1 by fabric width so both objectives are dimensionless and

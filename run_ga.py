@@ -116,6 +116,7 @@ def main():
         period_v_mm=50.0,
         K=8,
         fabric_width_mm=150.0 * 10.0,
+        num_bodies=5,
         w1=1,
         w2=10
     )
@@ -129,6 +130,7 @@ def main():
         num_internal_seams=num_seams,
         K=eval_cfg.K,
         num_landmarks=evaluator.instance.num_landmarks,
+        num_bodies=eval_cfg.num_bodies,
         fixed_rho=None,
         fixed_pi=None,
         fixed_h=None,

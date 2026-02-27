@@ -13,10 +13,11 @@ class GAInstance:
     Minimal metadata for sampling/mutating genomes.
     We keep some fields optional/fixed to enable incremental rollout.
     """
-    num_patches: int
+    num_patches: int        # patches per body (M)
     num_internal_seams: int
     K: int  # phase bins
     num_landmarks: int = 0  # needed for delta dimensionality (2 * num_landmarks)
+    num_bodies: int = 1     # number of bodies to nest simultaneously (N)
 
     # Constrain delta sampling and mutation to [delta_lo, delta_hi] around the
     # 0.5 baseline, reducing the chance of landmarks landing in geometrically
@@ -112,21 +113,23 @@ def tournament_select(pop: Sequence[Individual], k: int, rng: random.Random) -> 
 def random_genome(inst: GAInstance, rng: random.Random) -> Genome:
     num_p = inst.num_patches
     num_s = inst.num_internal_seams
+    # kappa, rho, pi operate over ALL bodies × patches
+    num_total = inst.num_bodies * num_p
 
     delta = inst.fixed_delta.copy() if inst.fixed_delta is not None else \
         np.array([rng.uniform(inst.delta_lo, inst.delta_hi) for _ in range(2 * inst.num_landmarks)], dtype=float)
 
-    # Discrete grain rotations (rho): 0..3 (multiples of 90deg)
+    # Discrete grain rotations (rho): 0..3 (multiples of 90deg), one per body×patch
     if inst.fixed_rho is not None:
         rho = inst.fixed_rho.copy()
     else:
-        rho = np.array([rng.randrange(4) for _ in range(num_p)], dtype=int)
+        rho = np.array([rng.randrange(4) for _ in range(num_total)], dtype=int)
 
-    # Placement order (pi): permutation of patch indices
+    # Placement order (pi): permutation of ALL body×patch items
     if inst.fixed_pi is not None:
         pi = inst.fixed_pi.copy()
     else:
-        pi = np.array(rng.sample(list(range(num_p)), k=num_p), dtype=int)
+        pi = np.array(rng.sample(list(range(num_total)), k=num_total), dtype=int)
 
     if inst.fixed_h is not None:
         h = int(inst.fixed_h)
@@ -134,7 +137,8 @@ def random_genome(inst: GAInstance, rng: random.Random) -> Genome:
         H = max(1, int(inst.num_heuristics))
         h = int(rng.randrange(H))
 
-    kappa = np.array([rng.randrange(inst.K) for _ in range(num_p)], dtype=int)
+    # Phase bins: one kappa per body×patch; w (seam weights) shared across bodies
+    kappa = np.array([rng.randrange(inst.K) for _ in range(num_total)], dtype=int)
     w = np.array([rng.random() for _ in range(num_s)], dtype=float)
 
     return Genome(delta=delta, rho=rho, kappa=kappa, w=w, pi=pi, h=h)
@@ -246,7 +250,12 @@ def _pop_table(pop: List[Individual], label: str) -> None:
         f1 = ind.meta.get("f1_height_mm", f[0])
         f2 = ind.meta.get("f2_phase", f[1])
         kappa = ind.genome.kappa.tolist()
-        print(f"  {marker}{i:>3}  {f.sum():>9.4f}  {f1:>10.2f}  {f2:>8.4f}  {kappa}")
+        # Truncate long kappa arrays (multi-body) to avoid unreadable output.
+        if len(kappa) > 8:
+            kappa_str = str(kappa[:8])[:-1] + ", ...]"
+        else:
+            kappa_str = str(kappa)
+        print(f"  {marker}{i:>3}  {f.sum():>9.4f}  {f1:>10.2f}  {f2:>8.4f}  {kappa_str}")
 
 
 def evaluate_population(pop: List[Individual], evaluator: Evaluator) -> None:
