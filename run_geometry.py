@@ -24,7 +24,7 @@ from geometry.landmarks import CORE_LANDMARKS, LONG_LANDMARKS, SHOULDER_KPT_IDX,
 # 1. SETUP EXPERIMENT
 # ==============================================================================
 
-mesh = trimesh.load('data/SMPL_FEMALE.ply')
+mesh = trimesh.load('data/SMPL_FEMALE_POSED.ply')
 
 # 2. Generate Full Library (L + R)
 full_landmark_lib = generate_symmetric_landmarks(mesh, {**CORE_LANDMARKS["Upper"], **LONG_LANDMARKS["Upper"]})
@@ -34,7 +34,7 @@ seams = build_shirt_topology(full_landmark_lib)
 texture_spec = TextureSpec("Stripes", 10.0, 100.0)
 
 instance = load_experiment(
-    mesh_path='data/SMPL_FEMALE.ply',
+    mesh_path='data/SMPL_FEMALE_POSED.ply',
     landmark_lib=full_landmark_lib,
     seam_lib=seams,
     active_seam_names=ACTIVE_SEAMS,

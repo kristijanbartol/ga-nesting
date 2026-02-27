@@ -65,6 +65,18 @@
         },
 
         {
+            "name": "Debug",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/create_smpl_mesh.py",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
+            },
+            "console": "integratedTerminal"
+        },
+
+        {
             "name": "Debug pytest (all tests)",
             "type": "debugpy",
             "request": "launch",

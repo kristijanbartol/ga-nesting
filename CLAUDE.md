@@ -86,7 +86,7 @@ Fitness:
 
 ### Required Data
 
-- `data/SMPL_FEMALE.ply` — input 3D body mesh
+- `data/SMPL_FEMALE_POSED.ply` — input 3D body mesh
 - `data/seamlines/upper/` — seam correspondence files (`seam-*.txt`) written by geometry pipeline and read by Stage2 solver
 - `results/pattern/latest/upper/patch_*/` — 2D patch PLY files written by geometry pipeline
 

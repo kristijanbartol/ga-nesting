@@ -158,84 +158,74 @@ def build_shirt_topology(landmark_lib):
 
 def build_pant_topology(landmark_lib):
     """
-    Defines the standard pant seams based on generated L/R landmarks.
+    Defines pant seams that produce 4 patches (front/back × left/right leg).
+
+    Landmark names must match what generate_symmetric_landmarks produces, i.e.
+    each source key becomes <key>_L (original) and <key>_R (mirror).
+
+    Required source keys in LONG_LANDMARKS["Lower"]:
+      "Ankle_Outer"   -> Ankle_Outer_L, Ankle_Outer_R  (outer ankle / hem corner)
+      "Ankle_Inner"   -> Ankle_Inner_L, Ankle_Inner_R  (inner ankle / inseam corner)
+    Required source keys in CORE_LANDMARKS["Lower"]:
+      "Hip"           -> Hip_L, Hip_R           (side-seam top / waistband corners)
+      "Crotch"        -> Crotch_L, Crotch_R     (inseam + rise bottom)
+      "Waist_Front"   -> Waist_Front_L/R        (front-rise top, front waist centre)
+      "Waist_Back"    -> Waist_Back_L/R         (back-rise top, back waist centre)
     """
     seams = {}
 
-    # 1. Right Side Seam (Waist R <-> Ankle R)
+    # 1. Right outer side seam  (Hip_R -> Ankle_Outer_R)
     seams["Side_R"] = SeamDefinition(
-        "Side_R", "Waist_R", "Ankle_R",
+        "Side_R", "Hip_R", "Ankle_Outer_R",
         path_type=SeamPathType.GEODESIC
     )
 
-    # 2. Right Pant End / Hem (Ankle R opening)
+    # 2. Right leg hem opening  (DUAL: front + back hem paths)
     seams["Pant_End_R"] = SeamDefinition(
-        "Pant_End_R", "Ankle_R", "Ankle_R_Inner",
+        "Pant_End_R", "Ankle_Outer_R", "Ankle_Inner_R",
         path_type=SeamPathType.DUAL
     )
 
-    # 3. Right Inner Seam (Ankle R Inner <-> Crotch R)
+    # 3. Right inseam  (Ankle_Inner_R -> Crotch_R)
     seams["Inner_Seam_R"] = SeamDefinition(
-        "Inner_Seam_R", "Ankle_R_Inner", "Crotch_R",
+        "Inner_Seam_R", "Ankle_Inner_R", "Crotch_R",
         path_type=SeamPathType.GEODESIC
     )
 
-    # 4. In-Between Seam Front (Crotch R <-> Crotch L, front side)
-    # Shared between left and right - only defined once
-    seams["Inbetween_Front"] = SeamDefinition(
-        "Inbetween_Front", "Crotch", "Waist_Mid_Front",
+    # 4. Front rise  (Crotch_R -> Waist_Front_L, front body surface)
+    seams["Rise_Front"] = SeamDefinition(
+        "Rise_Front", "Crotch_R", "Waist_Front_L",
         path_type=SeamPathType.GEODESIC
     )
 
-    # 5. In-Between Seam Back (Crotch R <-> Crotch L, back side)
-    # Shared between left and right - only defined once
-    seams["Inbetween_Back"] = SeamDefinition(
-        "Inbetween_Back", "Crotch", "Waist_Mid_Back",
+    # 5. Back rise  (Crotch_L -> Waist_Back_L, back body surface)
+    seams["Rise_Back"] = SeamDefinition(
+        "Rise_Back", "Crotch_L", "Waist_Back_L",
         path_type=SeamPathType.GEODESIC
     )
 
-    # 6. Waist Right Front (Crotch R <-> Waist R, front)
-    seams["Waist_R_Front"] = SeamDefinition(
-        "Waist_R_Front", "Waist_Mid_Front", "Waist_R",
-        path_type=SeamPathType.GEODESIC
-    )
-
-    # 7. Waist Right Back (Crotch R <-> Waist R, back)
-    seams["Waist_R_Back"] = SeamDefinition(
-        "Waist_R_Back", "Waist_Mid_Back", "Waist_R",
-        path_type=SeamPathType.GEODESIC
-    )
-
-    # --- Symmetric Left Side ---
-
-    # 8. Waist Left Front (Waist_Mid_Front <-> Waist L, front)
-    seams["Waist_L_Front"] = SeamDefinition(
-        "Waist_L_Front", "Waist_Mid_Front", "Waist_L",
-        path_type=SeamPathType.GEODESIC
-    )
-
-    # 9. Waist Left Back (Waist_Mid_Back <-> Waist L, back)
-    seams["Waist_L_Back"] = SeamDefinition(
-        "Waist_L_Back", "Waist_Mid_Back", "Waist_L",
-        path_type=SeamPathType.GEODESIC
-    )
-
-    # 10. Left Inner Seam (Crotch <-> Ankle L Inner)
+    # 6. Left inseam  (Crotch_L -> Ankle_Inner_L)
     seams["Inner_Seam_L"] = SeamDefinition(
-        "Inner_Seam_L", "Crotch", "Ankle_L_Inner",
+        "Inner_Seam_L", "Crotch_L", "Ankle_Inner_L",
         path_type=SeamPathType.GEODESIC
     )
 
-    # 11. Left Pant End / Hem (Ankle L Inner <-> Ankle L opening)
+    # 7. Left leg hem opening  (DUAL: front + back hem paths)
     seams["Pant_End_L"] = SeamDefinition(
-        "Pant_End_L", "Ankle_L_Inner", "Ankle_L",
+        "Pant_End_L", "Ankle_Inner_L", "Ankle_Outer_L",
         path_type=SeamPathType.DUAL
     )
 
-    # 12. Left Side Seam (Ankle L <-> Waist L)
+    # 8. Left outer side seam  (Ankle_Outer_L -> Hip_L)
     seams["Side_L"] = SeamDefinition(
-        "Side_L", "Ankle_L", "Waist_L",
+        "Side_L", "Ankle_Outer_L", "Hip_L",
         path_type=SeamPathType.GEODESIC
+    )
+
+    # 9. Waistband opening  (DUAL: front + back waist hem paths)
+    seams["Waist_Hem"] = SeamDefinition(
+        "Waist_Hem", "Hip_R", "Hip_L",
+        path_type=SeamPathType.DUAL
     )
 
     return seams

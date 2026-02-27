@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -56,11 +57,12 @@ def visualize_layout(fabric_state, texture_spec, title=None):
         ax.fill(x, y, color=color, alpha=0.25, zorder=2)
         ax.plot(x, y, color=color, lw=1.5, zorder=3)
 
-        # Texture stripes clipped to this patch
-        phase_y = getattr(item, 'phase_offset', (0.0, 0.0))[1]
+        # Texture stripes clipped to this patch.
+        # Use phase_offset_y=0 so all patches share the same global stripe grid
+        # (stripes at n * period_y), matching a real continuous fabric.
         _draw_texture_lines_in_patch(
             ax, poly,
-            phase_offset_y=phase_y,
+            phase_offset_y=0.0,
             period_y=texture_spec.period_y,
             color=color, lw=1.2, alpha=0.85
         )
@@ -77,6 +79,95 @@ def visualize_layout(fabric_state, texture_spec, title=None):
     ax.set_aspect('equal')
     ax.set_title(title or f"Nesting Result — Texture: {texture_spec.name}")
     ax.legend(handles=legend_handles, loc='upper right', fontsize='small')
+    plt.tight_layout()
+    plt.show()
+
+
+def visualize_population(pop, texture_spec, title=None, max_cols=6):
+    """
+    Draw a grid of nesting layouts for all individuals, ordered best → worst
+    (lowest fitness sum first, reading left-to-right, top-to-bottom).
+
+    Requires that each individual has ``ind.meta["fabric_state"]`` set (populated
+    automatically by RealEvaluator after nesting).
+    """
+    sorted_pop = sorted(
+        [ind for ind in pop if ind.fitness is not None],
+        key=lambda ind: ind.fitness.values.sum()
+    )
+    n = len(sorted_pop)
+    if n == 0:
+        print("[visualize_population] No evaluated individuals to display.")
+        return
+
+    cols = min(n, max_cols)
+    rows = math.ceil(n / cols)
+
+    # Make each cell roughly square: width proportional to fabric width, height to total height.
+    cell_w = 3.0
+    cell_h = 3.5
+    fig, axes = plt.subplots(rows, cols, figsize=(cols * cell_w, rows * cell_h))
+
+    # Normalise axes to always be a flat list.
+    if n == 1:
+        axes = [axes]
+    else:
+        axes = np.array(axes).flatten()
+
+    for rank, ind in enumerate(sorted_pop):
+        ax = axes[rank]
+        fabric = ind.meta.get("fabric_state")
+
+        f_sum = ind.fitness.values.sum()
+        f1 = ind.meta.get("f1_height_mm", ind.fitness.values[0])
+        f2 = ind.meta.get("f2_phase", ind.fitness.values[1])
+        kappa_str = str(ind.genome.kappa.tolist())
+        h_val = getattr(ind.genome, "h", "?")
+        pi_str = str(ind.genome.pi.tolist())
+
+        if fabric is None:
+            ax.text(0.5, 0.5, "no fabric_state", ha="center", va="center",
+                    transform=ax.transAxes, fontsize=7, color="red")
+            ax.set_title(f"#{rank + 1}  Σ={f_sum:.3f}", fontsize=7)
+            ax.axis("off")
+            continue
+
+        width = fabric.width
+        height = fabric.total_height if fabric.total_height > 0 else 1.0
+
+        # Fabric rectangle
+        rect = mpatches.Rectangle(
+            (0, 0), width, height,
+            linewidth=1, edgecolor="black", facecolor="#FAFAFA", zorder=1
+        )
+        ax.add_patch(rect)
+
+        # Patches
+        for idx, (item, cx, cy, poly) in enumerate(fabric.placed_items):
+            color = PATCH_COLORS[idx % len(PATCH_COLORS)]
+            x, y = poly.exterior.xy
+            ax.fill(x, y, color=color, alpha=0.45, zorder=2)
+            ax.plot(x, y, color=color, lw=0.8, zorder=3)
+
+        ax.set_xlim(-width * 0.02, width * 1.02)
+        ax.set_ylim(-height * 0.05, height * 1.1)
+        ax.set_aspect("equal")
+        ax.axis("off")
+
+        # Annotate: rank, fitness components, key genome fields
+        label = (
+            f"#{rank + 1}  Σ={f_sum:.3f}\n"
+            f"h={f1:.0f}mm  φ={f2:.3f}\n"
+            f"κ={kappa_str}  h={h_val}\n"
+            f"π={pi_str}"
+        )
+        ax.set_title(label, fontsize=5.5, loc="left", pad=2)
+
+    # Hide unused axes
+    for i in range(n, len(axes)):
+        axes[i].set_visible(False)
+
+    fig.suptitle(title or "Population — best (top-left) to worst (bottom-right)", fontsize=10)
     plt.tight_layout()
     plt.show()
 

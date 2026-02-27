@@ -9,8 +9,9 @@ from .utils import boundary_loops_from_edges, polygon_area_2d
 
 
 class PatchLoader:
-    def __init__(self, root_dir: str):
+    def __init__(self, root_dir: str, garment_part: str):
         self.root_dir = root_dir
+        self.garment_part = garment_part
         
     def _load_seam_anchor_indices(self) -> dict[int, int]:
         """Load a simple seam-based anchor mapping: patch_idx -> vertex_idx.
@@ -45,7 +46,7 @@ class PatchLoader:
         """
         # 1. Find all patch files
         # Pattern: results/pattern/latest/upper/patch_*/optim_final-seams.ply
-        search_path = os.path.join(self.root_dir, "upper", "patch_*", "optim_final-seams.ply")
+        search_path = os.path.join(self.root_dir, self.garment_part, "patch_*", "optim_final-seams.ply")
         files = glob.glob(search_path)
         
         if not files:

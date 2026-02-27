@@ -6,4 +6,5 @@ anisotropic-parameterization/
 potpourri3d/
 
 *.ply
+*.png
 results/

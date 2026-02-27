@@ -37,7 +37,7 @@ CORE_LANDMARKS = {
         ),
         "Waist": LandmarkDefinition(
             name="Waist",
-            boundary_corners=(6524, 6557, 4984, 4921)
+            boundary_corners=(6524, 6524, 6557, 6557)
         ),
         #"Waist_Mid": LandmarkDefinition(
         #    name="Waist_Mid",
@@ -45,21 +45,21 @@ CORE_LANDMARKS = {
         #)
     },
     "Lower": {
-        "Waist": LandmarkDefinition(
-            name="Waist",
-            boundary_corners=(6524, 6557, 4984, 4921)
-        ),
-        "Waist_Mid": LandmarkDefinition(
-            name="Waist_Mid",
-            boundary_corners=(6524, 6557, 4984, 4921)
-        ),
         "Hip": LandmarkDefinition(
             name="Hip",
-            boundary_corners=(6524, 6557, 4984, 4921)
+            boundary_corners=(4984, 4984, 4921, 4921)
+        ),
+        "Waist_Front": LandmarkDefinition(
+            name="Waist_Front",
+            boundary_corners=(3160, 3160, 3160, 3160)
+        ),
+        "Waist_Back": LandmarkDefinition(
+            name="Waist_Front",
+            boundary_corners=(1783, 1783, 1783, 1783)
         ),
         "Crotch": LandmarkDefinition(
             name="Crotch",
-            boundary_corners=(6524, 6557, 4984, 4921)
+            boundary_corners=(3149, 3149, 1364, 1364)
         )
     }
 }
@@ -77,11 +77,11 @@ LONG_LANDMARKS = {
         )
     },
     "Lower": {
-        "Leg_Outer": LandmarkDefinition(
+        "Ankle_Outer": LandmarkDefinition(
             name="Pant_End",
             boundary_corners=(6582, 6582, 6722, 6722)
         ),
-        "Leg_Inner": LandmarkDefinition(
+        "Ankle_Inner": LandmarkDefinition(
             name="Pant_End",
             boundary_corners=(6593, 6593, 6595, 6595)
         ),
@@ -139,20 +139,17 @@ SHIRT_SEAMS = [
     "Sleeve_Lower_R"
 ]
 PANT_SEAMS = [
-    "Side_L",
     "Side_R",
-    "Pant_End_L",
     "Pant_End_R",
-    "Crotch_Front",
-    "Crotch_Back",
-    "Inner_Seam_L",
     "Inner_Seam_R",
-    "Waistband_Front_L",
-    "Waistband_Front_R",
-    "Waistband_Back_L",
-    "Waistband_Back_R"
+    "Rise_Front",
+    "Rise_Back",
+    "Inner_Seam_L",
+    "Pant_End_L",
+    "Side_L",
+    "Waist_Hem",
 ]
 ONESIE_SEAMS = []
 
-ACTIVE_SEAMS = SHIRT_SEAMS.copy()
+ACTIVE_SEAMS = PANT_SEAMS.copy()
 SHOULDER_KPT_IDX = 5335

@@ -3,11 +3,14 @@ import glob
 import multiprocessing
 import numpy as np
 import trimesh
+from smplx import SMPL
+import os
+import torch
 
 from spec import LandmarkDefinition, TextureSpec
 from experiment_loader import load_experiment
 from geometry.geometry_utils import LandmarkMapper, generate_symmetric_landmarks
-from geometry.topologies import build_shirt_topology
+from geometry.topologies import build_pant_topology
 from geometry.cut_utils import perform_global_cut, assign_patch_labels
 from geometry.export import export_data
 from geometry.geometry_processor import BatchBuilder
@@ -15,12 +18,11 @@ from geometry.parameterization import parameterize
 from geometry.landmarks import CORE_LANDMARKS, LONG_LANDMARKS, SHOULDER_KPT_IDX, ACTIVE_SEAMS
 
 
-def build_instance(mesh_path: str = "data/SMPL_FEMALE.ply", fabric_width: float = 150.0):
+def build_instance(mesh_path: str = "data/SMPL_FEMALE_POSED.ply", fabric_width: float = 150.0):
     mesh = trimesh.load(mesh_path, process=False)
 
-    full_landmark_lib = generate_symmetric_landmarks(mesh, {**CORE_LANDMARKS["Upper"], **LONG_LANDMARKS["Upper"]})
-    # TODO: call build_*_topology by providing the string key to select the garment type (e.g., "shirt", "pants", "dress")
-    seams = build_shirt_topology(full_landmark_lib)
+    full_landmark_lib = generate_symmetric_landmarks(mesh, {**CORE_LANDMARKS["Lower"], **LONG_LANDMARKS["Lower"]})
+    seams = build_pant_topology(full_landmark_lib)
 
     # same as test_geometry.py (you can change later)
     texture_spec = TextureSpec("Stripes", 10.0, 100.0)

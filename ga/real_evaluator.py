@@ -61,7 +61,7 @@ def load_patch_vertices_full_from_latest(latest_root: str, garment_part: str = "
 class RealEvaluatorConfig:
     garment_part: str = "upper"
     latest_root: str = "results/pattern/latest"
-    seam_dir: str = "data/seamlines/upper"
+    seam_dir: str = f"data/seamlines/{garment_part}"
 
     period_u_mm: float = 50.0
     period_v_mm: float = 50.0
@@ -84,11 +84,13 @@ class RealEvaluator:
         self.cfg = cfg
 
         # 1) Build instance + mesh (blackbox)
-        self.instance, self.mesh = build_instance(mesh_path="data/SMPL_FEMALE.ply", fabric_width=cfg.fabric_width_mm / 1000.0)
+        self.instance, self.mesh = build_instance(mesh_path="data/SMPL_FEMALE_POSED.ply", fabric_width=cfg.fabric_width_mm / 1000.0)
 
         # 2) Baseline delta: fixed middle of each landmark quad, same as test_geometry.py
         # instance.num_landmarks landmarks => delta_uv length = 2*num_landmarks
         self.delta_baseline = np.array([0.5, 0.5] * self.instance.num_landmarks, dtype=float)
+        
+        assert(cfg.garment_part == 'lower')
 
         # 3) Run geometry blackbox ONCE to generate results/pattern/latest and data/seamlines
         run_geometry_blackbox_timeout(self.instance, self.mesh, self.delta_baseline, garment_part=cfg.garment_part)
@@ -165,7 +167,7 @@ class RealEvaluator:
         t_stage2 = time.time() - t0
 
         # --- STEP 2: Apply Stage2 transforms to patch geometry ---
-        loader = PatchLoader(self.cfg.latest_root)
+        loader = PatchLoader(self.cfg.latest_root, self.cfg.garment_part)
         items = loader.load_items()
         items = sorted(items, key=_pid)
 
@@ -199,6 +201,7 @@ class RealEvaluator:
         fabric_state = nest_engine.nest(items, permutation=pi, rotations=g.rho, heuristic=int(getattr(g, "h", 0)))
         t_nest = time.time() - t0
         f1 = float(fabric_state.total_height)
+        ind.meta["fabric_state"] = fabric_state
 
         # --- STEP 4: f2 in fabric space (Stage2 transform + rho rotation) ---
         # Stage2 produces small corrective transforms in parameterisation space.
@@ -214,6 +217,15 @@ class RealEvaluator:
             kj = kappas_by_id.get(c.patch_j, 0)
             rho_i = int(g.rho[c.patch_i - 1]) % 4 if (c.patch_i - 1) < g.rho.size else 0
             rho_j = int(g.rho[c.patch_j - 1]) % 4 if (c.patch_j - 1) < g.rho.size else 0
+
+            # Stripe-direction penalty: rho values that differ by an odd multiple of
+            # 90° produce perpendicular stripes across the seam — no kappa offset can
+            # fix that.  We add the maximum possible phase mismatch (0.5) per seam so
+            # the GA never prefers a perpendicularly-rotated pair over an aligned one.
+            if (rho_i % 2) != (rho_j % 2):
+                f2 += c.weight * 0.5
+                continue
+
             # Apply Stage2 transform, then rho rotation to get fabric-space coords.
             Vi = _rho_rotate_verts(Ti.apply(V_full_by_id[c.patch_i]), rho_i)
             Vj = _rho_rotate_verts(Tj.apply(V_full_by_id[c.patch_j]), rho_j)
