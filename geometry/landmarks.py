@@ -34,7 +34,7 @@ CORE_LANDMARKS = {
         ),
         "Waist": LandmarkDefinition(
             name="Waist",
-            boundary_corners=(6524, 6524, 6557, 6557)
+            boundary_corners=(6524, 6524, 6385, 6385)
         ),
         #"Waist_Mid": LandmarkDefinition(
         #    name="Waist_Mid",

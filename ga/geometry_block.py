@@ -125,7 +125,7 @@ def _geometry_worker(instance, mesh_V, mesh_F, delta_uv, garment_part, result_qu
 
 
 def run_geometry_blackbox_timeout(instance, mesh, delta_uv: np.ndarray,
-                                   garment_part: str = "upper", timeout: int = 60):
+                                   garment_part: str = "upper", timeout: int = 5):
     """
     Run run_geometry_blackbox in a forked subprocess with a hard wall-clock timeout.
 

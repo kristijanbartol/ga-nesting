@@ -13,17 +13,17 @@ class GAInstance:
     Minimal metadata for sampling/mutating genomes.
     We keep some fields optional/fixed to enable incremental rollout.
     """
-    num_patches: int        # patches per body (M)
+    num_patches: int
     num_internal_seams: int
     K: int  # phase bins
     num_landmarks: int = 0  # needed for delta dimensionality (2 * num_landmarks)
-    num_bodies: int = 1     # number of bodies to nest simultaneously (N)
+    num_bodies: int = 1
 
     # Constrain delta sampling and mutation to [delta_lo, delta_hi] around the
     # 0.5 baseline, reducing the chance of landmarks landing in geometrically
     # degenerate mesh regions. Full range is [0.0, 1.0].
-    delta_lo: float = 0.4
-    delta_hi: float = 0.6
+    delta_lo: float = 0.3
+    delta_hi: float = 0.7
 
     # Optional: fixed values to keep pipeline simple initially
     fixed_delta: Optional[np.ndarray] = None
@@ -89,8 +89,7 @@ class GAConfig:
     prob_flip_rho: float = 0.15
     prob_swap_pi: float = 0.3
     prob_flip_h: float = 0.25
-    delta_sigma: float = 0.05   # step size for delta mutation — kept small relative to [delta_lo, delta_hi]
-    weight_sigma: float = 0.15  # step size for seam weight (w) mutation
+    weight_sigma: float = 0.15
 
 
 def dominates(a: Fitness, b: Fitness) -> bool:
@@ -113,23 +112,21 @@ def tournament_select(pop: Sequence[Individual], k: int, rng: random.Random) -> 
 def random_genome(inst: GAInstance, rng: random.Random) -> Genome:
     num_p = inst.num_patches
     num_s = inst.num_internal_seams
-    # kappa, rho, pi operate over ALL bodies × patches
-    num_total = inst.num_bodies * num_p
 
     delta = inst.fixed_delta.copy() if inst.fixed_delta is not None else \
         np.array([rng.uniform(inst.delta_lo, inst.delta_hi) for _ in range(2 * inst.num_landmarks)], dtype=float)
 
-    # Discrete grain rotations (rho): 0..3 (multiples of 90deg), one per body×patch
+    # Discrete grain rotations (rho): 0..3 (multiples of 90deg)
     if inst.fixed_rho is not None:
         rho = inst.fixed_rho.copy()
     else:
-        rho = np.array([rng.randrange(4) for _ in range(num_total)], dtype=int)
+        rho = np.array([rng.randrange(4) for _ in range(num_p)], dtype=int)
 
-    # Placement order (pi): permutation of ALL body×patch items
+    # Placement order (pi): permutation of patch indices
     if inst.fixed_pi is not None:
         pi = inst.fixed_pi.copy()
     else:
-        pi = np.array(rng.sample(list(range(num_total)), k=num_total), dtype=int)
+        pi = np.array(rng.sample(list(range(num_p)), k=num_p), dtype=int)
 
     if inst.fixed_h is not None:
         h = int(inst.fixed_h)
@@ -137,8 +134,7 @@ def random_genome(inst: GAInstance, rng: random.Random) -> Genome:
         H = max(1, int(inst.num_heuristics))
         h = int(rng.randrange(H))
 
-    # Phase bins: one kappa per body×patch; w (seam weights) shared across bodies
-    kappa = np.array([rng.randrange(inst.K) for _ in range(num_total)], dtype=int)
+    kappa = np.array([rng.randrange(inst.K) for _ in range(num_p)], dtype=int)
     w = np.array([rng.random() for _ in range(num_s)], dtype=float)
 
     return Genome(delta=delta, rho=rho, kappa=kappa, w=w, pi=pi, h=h)
@@ -204,7 +200,7 @@ def mutate(g: Genome, inst: GAInstance, cfg: GAConfig, rng: random.Random) -> Ge
 
     # gaussian noise on delta, clamp to allowed range
     if inst.fixed_delta is None and delta.size > 0:
-        delta = delta + np.random.normal(0.0, cfg.delta_sigma, size=delta.shape)
+        delta = delta + np.random.normal(0.0, cfg.weight_sigma, size=delta.shape)
         delta = np.clip(delta, inst.delta_lo, inst.delta_hi)
 
     # flip some kappas
@@ -245,17 +241,8 @@ def _pop_table(pop: List[Individual], label: str) -> None:
     for i, ind in enumerate(pop_sorted):
         marker = "*" if i == 0 else " "
         f = ind.fitness.values  # type: ignore
-        # Use raw (unweighted) values from meta when available; fall back to
-        # the weighted fitness component only for penalty/failed individuals.
-        f1 = ind.meta.get("f1_height_mm", f[0])
-        f2 = ind.meta.get("f2_phase", f[1])
         kappa = ind.genome.kappa.tolist()
-        # Truncate long kappa arrays (multi-body) to avoid unreadable output.
-        if len(kappa) > 8:
-            kappa_str = str(kappa[:8])[:-1] + ", ...]"
-        else:
-            kappa_str = str(kappa)
-        print(f"  {marker}{i:>3}  {f.sum():>9.4f}  {f1:>10.2f}  {f2:>8.4f}  {kappa_str}")
+        print(f"  {marker}{i:>3}  {f.sum():>9.4f}  {f[0]:>10.2f}  {f[1]:>8.4f}  {kappa}")
 
 
 def evaluate_population(pop: List[Individual], evaluator: Evaluator) -> None:
@@ -268,9 +255,7 @@ def evaluate_population(pop: List[Individual], evaluator: Evaluator) -> None:
             print(f"  [{i+1}/{total}] kappa={kappa}  delta_mean={delta_mean:.2f}  w={w}")
             ind.fitness = evaluator(ind)
             f = ind.fitness.values
-            f1 = ind.meta.get("f1_height_mm", f[0])
-            f2 = ind.meta.get("f2_phase", f[1])
-            print(f"         -> f1={f1:.2f}mm  f2={f2:.4f}  sum={f.sum():.4f}")
+            print(f"         -> f1={f[0]:.2f}  f2={f[1]:.4f}  sum={f.sum():.4f}")
 
 
 def run_ga(inst: GAInstance, evaluator: Evaluator, cfg: GAConfig) -> List[Individual]:
@@ -288,7 +273,6 @@ def run_ga(inst: GAInstance, evaluator: Evaluator, cfg: GAConfig) -> List[Indivi
           f"  h={inst.fixed_h if inst.fixed_h is not None else 'no'}")
     if inst.fixed_delta is None:
         print(f"  delta range: [{inst.delta_lo}, {inst.delta_hi}]"
-              f"  sigma={cfg.delta_sigma}"
               f"  (perturbation ±{inst.delta_hi - 0.5:.2f} around 0.5 baseline)")
 
     print("\n=== Initial Population ===")

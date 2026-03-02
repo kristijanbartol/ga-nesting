@@ -68,7 +68,7 @@
             "name": "Debug",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/create_smpl_mesh.py",
+            "program": "${workspaceFolder}/debug_landmarks.py",
             "cwd": "${workspaceFolder}",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"

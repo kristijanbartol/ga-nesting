@@ -128,8 +128,8 @@ def main():
         K=8,
         fabric_width_mm=150.0 * 10.0,
         num_bodies=1,
-        w1=1,
-        w2=100
+        w1=0,
+        w2=1
     )
     evaluator = RealEvaluator(eval_cfg)
 

@@ -141,20 +141,21 @@ class RealEvaluator:
             V_full_by_id = load_patch_vertices_full_from_latest(self.cfg.latest_root, garment_part=self.cfg.garment_part, scale_mm=1000.0)
             patch_ids = sorted(V_full_by_id.keys())
             t_geo = time.time() - t0
+
+            # Map patch_id -> item_idx (rank in sorted patch_ids).
+            # IMPORTANT: do NOT use (pid - 1) as the index — patch IDs can be
+            # non-sequential (e.g., [1, 2, 3, 5] when patch_04 is absent).
+            # Using pid-1 would silently map patch_05 to index 4, which is either
+            # out-of-bounds (kappa size=4) or into another body's genome slice in
+            # the multi-body case — both produce wrong fitness signals.
+            # This also raises IndexError when geometry cuts more patches than
+            # expected (e.g., 5 instead of 4), which is caught below as a penalty.
+            pid_to_item_idx = {pid: idx for idx, pid in enumerate(patch_ids)}
+            kappas_by_id = {pid: int(g.kappa[pid_to_item_idx[pid]]) for pid in patch_ids}
         except Exception as e:
             print(f"         [geo] FAILED: {e} -> penalty fitness")
             penalty = 1e6 / self.cfg.fabric_width_mm  # normalised, same scale as f1_norm
             return Fitness(np.array([self.cfg.w1 * penalty, self.cfg.w2 * penalty, 0.0], dtype=float))
-
-        # Map patch_id -> item_idx (rank in sorted patch_ids).
-        # IMPORTANT: do NOT use (pid - 1) as the index — patch IDs can be
-        # non-sequential (e.g., [1, 2, 3, 5] when patch_04 is absent).
-        # Using pid-1 would silently map patch_05 to index 4, which is either
-        # out-of-bounds (kappa size=4) or into another body's genome slice in
-        # the multi-body case — both produce wrong fitness signals.
-        pid_to_item_idx = {pid: idx for idx, pid in enumerate(patch_ids)}
-
-        kappas_by_id = {pid: int(g.kappa[pid_to_item_idx[pid]]) for pid in patch_ids}
 
         weighted_constraints = []
         for i, c in enumerate(constraints):
