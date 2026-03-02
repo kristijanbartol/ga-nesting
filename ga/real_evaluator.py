@@ -90,14 +90,16 @@ class RealEvaluator:
     def __init__(self, cfg: RealEvaluatorConfig):
         self.cfg = cfg
 
-        # 1) Build instance + mesh (blackbox)
-        self.instance, self.mesh = build_instance(mesh_path="data/SMPL_FEMALE_POSED.ply", fabric_width=cfg.fabric_width_mm / 1000.0)
+        # 1) Build instance + mesh (topology/landmarks dispatched by garment_part)
+        self.instance, self.mesh = build_instance(
+            mesh_path="data/SMPL_FEMALE_POSED.ply",
+            fabric_width=cfg.fabric_width_mm / 1000.0,
+            garment_type=cfg.garment_part,
+        )
 
         # 2) Baseline delta: fixed middle of each landmark quad, same as test_geometry.py
         # instance.num_landmarks landmarks => delta_uv length = 2*num_landmarks
         self.delta_baseline = np.array([0.5, 0.5] * self.instance.num_landmarks, dtype=float)
-        
-        assert(cfg.garment_part == 'lower')
 
         # 3) Run geometry blackbox ONCE to generate results/pattern/latest and data/seamlines
         run_geometry_blackbox_timeout(self.instance, self.mesh, self.delta_baseline, garment_part=cfg.garment_part)
@@ -144,7 +146,15 @@ class RealEvaluator:
             penalty = 1e6 / self.cfg.fabric_width_mm  # normalised, same scale as f1_norm
             return Fitness(np.array([self.cfg.w1 * penalty, self.cfg.w2 * penalty, 0.0], dtype=float))
 
-        kappas_by_id = {pid: int(g.kappa[pid - 1]) for pid in patch_ids if (pid - 1) < g.kappa.size}
+        # Map patch_id -> item_idx (rank in sorted patch_ids).
+        # IMPORTANT: do NOT use (pid - 1) as the index — patch IDs can be
+        # non-sequential (e.g., [1, 2, 3, 5] when patch_04 is absent).
+        # Using pid-1 would silently map patch_05 to index 4, which is either
+        # out-of-bounds (kappa size=4) or into another body's genome slice in
+        # the multi-body case — both produce wrong fitness signals.
+        pid_to_item_idx = {pid: idx for idx, pid in enumerate(patch_ids)}
+
+        kappas_by_id = {pid: int(g.kappa[pid_to_item_idx[pid]]) for pid in patch_ids}
 
         weighted_constraints = []
         for i, c in enumerate(constraints):
@@ -251,18 +261,25 @@ class RealEvaluator:
                 Ti = Tsol.get(c.patch_i, Rigid2D(0, 0, 0))
                 Tj = Tsol.get(c.patch_j, Rigid2D(0, 0, 0))
 
-                # Map patch_id -> flat genome index for this body
-                gi_i = b * M + (c.patch_i - 1)  # patch IDs are 1-based
-                gi_j = b * M + (c.patch_j - 1)
+                # Map patch_id -> flat genome index for this body using
+                # pid_to_item_idx (NOT pid-1, which breaks for non-sequential IDs).
+                gi_i = b * M + pid_to_item_idx[c.patch_i]
+                gi_j = b * M + pid_to_item_idx[c.patch_j]
                 ki = int(g.kappa[gi_i]) if gi_i < g.kappa.size else 0
                 kj = int(g.kappa[gi_j]) if gi_j < g.kappa.size else 0
                 rho_i = int(g.rho[gi_i]) % 4 if gi_i < g.rho.size else 0
                 rho_j = int(g.rho[gi_j]) % 4 if gi_j < g.rho.size else 0
 
+                # f2 always uses unit weight (1.0) per seam so the GA cannot
+                # reduce its score by silencing seam constraints via small w values.
+                # The genome weight c.weight (from g.w) only controls the Stage2
+                # solver's soft constraint balance — it must not leak into fitness.
+                F2_SEAM_WEIGHT = 1.0
+
                 # Stripe-direction penalty: patches rotated by an odd multiple of 90°
                 # relative to each other produce perpendicular stripes at the seam.
                 if (rho_i % 2) != (rho_j % 2):
-                    f2_body += c.weight * 0.5
+                    f2_body += F2_SEAM_WEIGHT * 0.5
                     continue
 
                 Vi = _rho_rotate_verts(Ti.apply(V_full_by_id[c.patch_i]), rho_i)
@@ -275,7 +292,7 @@ class RealEvaluator:
                     kappa_i=ki,
                     kappa_j=kj,
                     K=K,
-                    weight=c.weight,
+                    weight=F2_SEAM_WEIGHT,
                     transform_i=None,
                     transform_j=None,
                 )

@@ -15,15 +15,19 @@ from ga.real_evaluator import load_patch_vertices_full_from_latest
 
 
 
-def apply_kappa_to_items(items, genome, K, texture):
-    import re
+def apply_kappa_to_items(items, genome, K, texture, pid_to_item_idx):
+    """Apply kappa phase offsets using pid_to_item_idx (not pid-1) to handle non-sequential patch IDs."""
     tx, ty = texture.period_x, texture.period_y
+    import re
     for it in items:
         m = re.search(r"patch_(\d+)", it.name)
         if not m:
             continue
         pid = int(m.group(1))
-        k = int(genome.kappa[pid - 1]) if (pid - 1) < genome.kappa.size else 0
+        idx = pid_to_item_idx.get(pid)
+        if idx is None or idx >= genome.kappa.size:
+            continue
+        k = int(genome.kappa[idx])
         it.phase_offset = ((k / float(K)) * tx, (k / float(K)) * ty)
 
 
@@ -38,16 +42,20 @@ def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome,
         return int(m.group(1)) if m else 10**9
     items = sorted(items, key=_pid)
 
+    # Build pid -> item_idx mapping (do NOT use pid-1, patch IDs can be non-sequential).
+    patch_ids_local = [_pid(it) for it in items]
+    pid_to_item_idx = {pid: idx for idx, pid in enumerate(patch_ids_local)}
+
     # 1) Apply kappa -> phase_offset (snap lattice shift)
-    apply_kappa_to_items(items, genome, K, texture)
+    apply_kappa_to_items(items, genome, K, texture, pid_to_item_idx)
 
     # 2) Stage2: compute transforms from seam constraints + kappas + weights
     constraints = load_seam_constraints_from_dir(seam_dir, weights_by_filename={}, default_weight=1.0)
 
-    V_full_by_id = load_patch_vertices_full_from_latest(latest_root, garment_part="lower", scale_mm=1000.0)
+    V_full_by_id = load_patch_vertices_full_from_latest(latest_root, garment_part=garment_part, scale_mm=1000.0)
     patch_ids = sorted(V_full_by_id.keys())
 
-    kappas_by_id = {pid: int(genome.kappa[pid - 1]) for pid in patch_ids if (pid - 1) < genome.kappa.size}
+    kappas_by_id = {pid: int(genome.kappa[pid_to_item_idx[pid]]) for pid in patch_ids if pid in pid_to_item_idx}
 
     # apply genome weights by seam-file order
     weighted_constraints = []
@@ -85,7 +93,10 @@ def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome,
     # Apply discrete grain rotations (rho) after Stage2 bake (visualization only)
     for it in items:
         pid = _pid(it)
-        rho_val = int(genome.rho[pid - 1]) % 4 if (1 <= pid <= genome.rho.size) else 0
+        idx = pid_to_item_idx.get(pid)
+        if idx is None or idx >= genome.rho.size:
+            continue
+        rho_val = int(genome.rho[idx]) % 4
         it.set_rotation(float(rho_val * 90))
 
     # 4) Nest + visualize
@@ -106,19 +117,19 @@ def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome,
 
 
 def main():
-    garment_part = "lower"
-    
+    GARMENT_TYPE = "upper"   # ← change this one line to switch garments: "lower" | "upper"
+
     eval_cfg = RealEvaluatorConfig(
-        garment_part=garment_part,
+        garment_part=GARMENT_TYPE,
         latest_root="results/pattern/latest",
-        seam_dir=f"data/seamlines/{garment_part}",
+        seam_dir=f"data/seamlines/{GARMENT_TYPE}",
         period_u_mm=50.0,
         period_v_mm=50.0,
         K=8,
         fabric_width_mm=150.0 * 10.0,
-        num_bodies=5,
+        num_bodies=1,
         w1=1,
-        w2=10
+        w2=100
     )
     evaluator = RealEvaluator(eval_cfg)
 
@@ -166,9 +177,9 @@ def main():
 
     # Show baseline vs best NESTING (collision-free by construction)
     nest_and_show(eval_cfg.latest_root, eval_cfg.seam_dir, evaluator.lattice, evaluator.instance.texture,
-                eval_cfg.fabric_width_mm, base, eval_cfg.K, "BASELINE (kappa=0)", garment_part)
+                eval_cfg.fabric_width_mm, base, eval_cfg.K, "BASELINE (kappa=0)", GARMENT_TYPE)
     nest_and_show(eval_cfg.latest_root, eval_cfg.seam_dir, evaluator.lattice, evaluator.instance.texture,
-                eval_cfg.fabric_width_mm, best.genome, eval_cfg.K, "BEST (GA kappa)", garment_part)
+                eval_cfg.fabric_width_mm, best.genome, eval_cfg.K, "BEST (GA kappa)", GARMENT_TYPE)
 
 
 if __name__ == "__main__":

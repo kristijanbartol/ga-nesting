@@ -3,20 +3,21 @@ import subprocess
 from sys import platform
 
 
-def parameterize(hyperparams_config={}):
+def parameterize(hyperparams_config={}, garment_part: str = "lower"):
     # Get absolute paths
     current_dir = os.getcwd()
     cpp_program_path = os.path.join(current_dir, "anisotropic-parameterization/build/loom")
     root_project_path_arg = os.path.abspath(current_dir)
-    
+
     # Ensure the executable exists
     if not os.path.exists(cpp_program_path):
         raise FileNotFoundError(f"Executable not found at: {cpp_program_path}")
-    
+
     # Start with base command and config file
     command = [
         cpp_program_path,
-        "--config", "anisotropic-parameterization/configs/default.json"
+        "--config", "anisotropic-parameterization/configs/default.json",
+        "--garment-part", garment_part,
     ]
     
     # Add other parameters with their values

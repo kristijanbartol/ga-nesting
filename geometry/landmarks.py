@@ -13,11 +13,8 @@ from spec import LandmarkDefinition
 #  - add more texture pattern types (start with stripes and grid)
 #  - visualize in the simulation in 3D
 #  - include fit loss component (read from the resulting scales and evaluate using existing utils)
-# 
-#  - adjust hyperparameters to compare the results
 
 # OPTIONAL / EXPERIMENTS:
-#  - produce for multiple sizes, e.g., S, M, L, XL (two modes: each size has individual parameters vs. common parameters)
 #  - more complex pattern symmetries
 
 

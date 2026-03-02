@@ -10,30 +10,55 @@ import torch
 from spec import LandmarkDefinition, TextureSpec
 from experiment_loader import load_experiment
 from geometry.geometry_utils import LandmarkMapper, generate_symmetric_landmarks
-from geometry.topologies import build_pant_topology
+from geometry.topologies import build_pant_topology, build_sleeveless_shirt_topology
 from geometry.cut_utils import perform_global_cut, assign_patch_labels
 from geometry.export import export_data
 from geometry.geometry_processor import BatchBuilder
 from geometry.parameterization import parameterize
-from geometry.landmarks import CORE_LANDMARKS, LONG_LANDMARKS, SHOULDER_KPT_IDX, ACTIVE_SEAMS
+from geometry.landmarks import (
+    CORE_LANDMARKS, LONG_LANDMARKS, SHOULDER_KPT_IDX,
+    PANT_SEAMS, SHIRTLESS_SEAMS,
+)
 
 
-def build_instance(mesh_path: str = "data/SMPL_FEMALE_POSED.ply", fabric_width: float = 150.0):
+# Dispatch table keyed by garment_type (= garment_part string).
+# To add a new garment, add an entry here — no other file needs changing.
+_GARMENT_CONFIGS = {
+    "lower": {
+        "landmark_fn": lambda: {**CORE_LANDMARKS["Lower"], **LONG_LANDMARKS["Lower"]},
+        "topology":    build_pant_topology,
+        "active_seams": PANT_SEAMS,
+    },
+    "upper": {
+        "landmark_fn": lambda: {**CORE_LANDMARKS["Upper"]},   # sleeveless: no sleeve landmarks
+        "topology":    build_sleeveless_shirt_topology,
+        "active_seams": SHIRTLESS_SEAMS,
+    },
+}
+
+
+def build_instance(
+    mesh_path: str = "data/SMPL_FEMALE_POSED.ply",
+    fabric_width: float = 150.0,
+    garment_type: str = "lower",
+):
+    if garment_type not in _GARMENT_CONFIGS:
+        raise ValueError(f"Unknown garment_type '{garment_type}'. Known: {list(_GARMENT_CONFIGS)}")
+    cfg = _GARMENT_CONFIGS[garment_type]
+
     mesh = trimesh.load(mesh_path, process=False)
+    full_landmark_lib = generate_symmetric_landmarks(mesh, cfg["landmark_fn"]())
+    seams = cfg["topology"](full_landmark_lib)
 
-    full_landmark_lib = generate_symmetric_landmarks(mesh, {**CORE_LANDMARKS["Lower"], **LONG_LANDMARKS["Lower"]})
-    seams = build_pant_topology(full_landmark_lib)
-
-    # same as test_geometry.py (you can change later)
     texture_spec = TextureSpec("Stripes", 10.0, 100.0)
 
     instance = load_experiment(
         mesh_path=mesh_path,
         landmark_lib=full_landmark_lib,
         seam_lib=seams,
-        active_seam_names=ACTIVE_SEAMS,
+        active_seam_names=cfg["active_seams"],
         texture=texture_spec,
-        fabric_width=fabric_width
+        fabric_width=fabric_width,
     )
     return instance, mesh
 
@@ -70,8 +95,8 @@ def run_geometry_blackbox(instance, mesh, delta_uv: np.ndarray, garment_part: st
         cut_mesh
     )
 
-    # writes results/pattern/latest/.../optim_final-seams.ply
-    parameterize()
+    # writes results/pattern/latest/{garment_part}/patch_*/optim_final-seams.ply
+    parameterize(garment_part=garment_part)
 
     output_pattern = f"results/pattern/latest/{garment_part}/patch_*/optim_final-seams.ply"
     output_files = glob.glob(output_pattern)
