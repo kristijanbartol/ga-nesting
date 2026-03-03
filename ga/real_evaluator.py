@@ -15,6 +15,7 @@ from nesting.stage2_global_align import load_seam_constraints_from_dir, solve_gl
 from nesting.loader import PatchLoader
 from nesting.engine import NestingEngine
 
+from spec import SeamPathType
 from .geometry_block import build_instance, run_geometry_blackbox_timeout
 
 
@@ -36,12 +37,22 @@ def _parse_patch_id(patch_dirname: str) -> int:
     return int(m.group(1))
 
 
-def load_patch_vertices_full_from_latest(latest_root: str, garment_part: str = "upper", scale_mm: float = 1000.0) -> Dict[int, np.ndarray]:
+def load_patch_vertices_full_from_latest(
+    latest_root: str,
+    garment_part: str = "upper",
+    scale_mm: float = 1000.0,
+    center_by_boundary: bool = False,
+) -> Dict[int, np.ndarray]:
     """
     Load FULL mesh vertices (Nx2) for each patch id, from:
       results/pattern/latest/{garment_part}/patch_*/optim_final-seams.ply
     Needed for seam mismatch evaluation / Stage2 solver.
+
+    When center_by_boundary=True, vertices are shifted so the outer boundary
+    loop mean is at the origin — matching the PatchLoader / NestingItem frame.
     """
+    from nesting.utils import boundary_loops_from_edges, polygon_area_2d
+
     pattern = os.path.join(latest_root, garment_part, "patch_*", "optim_final-seams.ply")
     files = sorted(glob.glob(pattern))
     if not files:
@@ -53,6 +64,14 @@ def load_patch_vertices_full_from_latest(latest_root: str, garment_part: str = "
         pid = _parse_patch_id(patch_dir)
         mesh = trimesh.load(fpath, process=False)
         V2 = mesh.vertices[:, :2] * scale_mm
+        if center_by_boundary:
+            ue = trimesh.grouping.group_rows(mesh.edges_sorted, require_count=1)
+            be = mesh.edges[ue]
+            loops = boundary_loops_from_edges(be)
+            areas = [abs(polygon_area_2d(V2[lp])) for lp in loops]
+            outer = loops[int(np.argmax(areas))]
+            bm = V2[outer].mean(axis=0)
+            V2 = V2 - bm
         V_by_id[pid] = V2
     return V_by_id
 
@@ -107,6 +126,22 @@ class RealEvaluator:
         # 4) Load seam constraints list once (order is stable: sorted filenames)
         self.constraints = load_seam_constraints_from_dir(cfg.seam_dir, weights_by_filename={}, default_weight=1.0)
 
+        # 5a) Build per-constraint static importance weights from topology.
+        # Only GEODESIC seams generate constraint files (DUAL boundary seams are
+        # filtered out by extract_seamlines). The GEODESIC seams appear in the
+        # constraint files in the same alphabetical order as in active_seam_definitions,
+        # so a simple filter-and-index approach is correct.
+        geodesic_importances = [
+            seam.importance
+            for seam in self.instance.active_seam_definitions
+            if seam.path_type == SeamPathType.GEODESIC
+        ]
+        self.seam_importances = (
+            np.array(geodesic_importances, dtype=float)
+            if geodesic_importances
+            else np.ones(len(self.constraints), dtype=float)
+        )
+
         # 5) Load patch IDs once
         self.V_full_by_id = load_patch_vertices_full_from_latest(cfg.latest_root, garment_part=cfg.garment_part, scale_mm=1000.0)
         self.patch_ids = sorted(self.V_full_by_id.keys())
@@ -122,6 +157,7 @@ class RealEvaluator:
         print("[RealEvaluator] Initialized.")
         print(f"  patches: {self.patch_ids}  ({len(self.patch_ids)} total)")
         print(f"  seams:   {len(self.constraints)}")
+        print(f"  seam importances (GEODESIC only): {self.seam_importances.tolist()}")
         print(f"  fabric:  {cfg.fabric_width_mm:.0f}mm wide"
               f"  period={cfg.period_u_mm:.0f}x{cfg.period_v_mm:.0f}mm  K={cfg.K}")
         print(f"  weights: w1(height)={cfg.w1}  w2(phase)={cfg.w2}  w3(distortion)={cfg.w3}")
@@ -138,8 +174,15 @@ class RealEvaluator:
             print("         [geo] running...", flush=True)
             run_geometry_blackbox_timeout(self.instance, self.mesh, g.delta, garment_part=self.cfg.garment_part)
             constraints = load_seam_constraints_from_dir(self.cfg.seam_dir, weights_by_filename={}, default_weight=1.0)
-            V_full_by_id = load_patch_vertices_full_from_latest(self.cfg.latest_root, garment_part=self.cfg.garment_part, scale_mm=1000.0)
-            patch_ids = sorted(V_full_by_id.keys())
+            # center_by_boundary=True: vertices are shifted so the outer boundary
+            # mean is at the origin, matching the PatchLoader / NestingItem frame.
+            # This ensures Stage2 and f2 operate in the same coordinate system as
+            # the nesting engine, so the phase computation is consistent with the
+            # actual fabric placement.
+            V_centered_by_id = load_patch_vertices_full_from_latest(
+                self.cfg.latest_root, garment_part=self.cfg.garment_part,
+                scale_mm=1000.0, center_by_boundary=True)
+            patch_ids = sorted(V_centered_by_id.keys())
             t_geo = time.time() - t0
 
             # Map patch_id -> item_idx (rank in sorted patch_ids).
@@ -159,8 +202,8 @@ class RealEvaluator:
 
         weighted_constraints = []
         for i, c in enumerate(constraints):
-            w = float(g.w[i]) if i < g.w.size else 1.0
-            weighted_constraints.append(type(c)(c.patch_i, c.patch_j, c.pairs, w, c.name))
+            imp = float(self.seam_importances[i]) if i < len(self.seam_importances) else 1.0
+            weighted_constraints.append(type(c)(c.patch_i, c.patch_j, c.pairs, imp, c.name))
 
         def _pid(it) -> int:
             m = re.search(r"patch_(\d+)", it.name)
@@ -174,7 +217,7 @@ class RealEvaluator:
         Tsol = solve_global_alignment_all_components(
             patch_ids=patch_ids,
             constraints=weighted_constraints,
-            patch_vertices_by_id=V_full_by_id,
+            patch_vertices_by_id=V_centered_by_id,
             lattice=self.lattice,
             kappas_by_id=kappas_by_id,
             K=K,
@@ -271,20 +314,18 @@ class RealEvaluator:
                 rho_i = int(g.rho[gi_i]) % 4 if gi_i < g.rho.size else 0
                 rho_j = int(g.rho[gi_j]) % 4 if gi_j < g.rho.size else 0
 
-                # f2 always uses unit weight (1.0) per seam so the GA cannot
-                # reduce its score by silencing seam constraints via small w values.
-                # The genome weight c.weight (from g.w) only controls the Stage2
-                # solver's soft constraint balance — it must not leak into fitness.
-                F2_SEAM_WEIGHT = 1.0
+                # Use the static per-seam importance as the f2 weight.
+                # c.weight was set to seam importance in weighted_constraints above.
+                seam_imp = c.weight
 
                 # Stripe-direction penalty: patches rotated by an odd multiple of 90°
                 # relative to each other produce perpendicular stripes at the seam.
                 if (rho_i % 2) != (rho_j % 2):
-                    f2_body += F2_SEAM_WEIGHT * 0.5
+                    f2_body += seam_imp * 0.5
                     continue
 
-                Vi = _rho_rotate_verts(Ti.apply(V_full_by_id[c.patch_i]), rho_i)
-                Vj = _rho_rotate_verts(Tj.apply(V_full_by_id[c.patch_j]), rho_j)
+                Vi = _rho_rotate_verts(Ti.apply(V_centered_by_id[c.patch_i]), rho_i)
+                Vj = _rho_rotate_verts(Tj.apply(V_centered_by_id[c.patch_j]), rho_j)
                 f2_body += seam_phase_mismatch_scalar(
                     seam_pairs=c.pairs,
                     patch_i_vertices_xy=Vi,
@@ -293,7 +334,7 @@ class RealEvaluator:
                     kappa_i=ki,
                     kappa_j=kj,
                     K=K,
-                    weight=F2_SEAM_WEIGHT,
+                    weight=seam_imp,
                     transform_i=None,
                     transform_j=None,
                 )

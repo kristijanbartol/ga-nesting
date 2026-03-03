@@ -2,10 +2,11 @@ from typing import Dict, List
 import trimesh
 import numpy as np
 from spec import (
-    ProblemInstance, 
-    TextureSpec, 
-    LandmarkDefinition, 
-    SeamDefinition
+    ProblemInstance,
+    TextureSpec,
+    LandmarkDefinition,
+    SeamDefinition,
+    SeamPathType,
 )
 
 
@@ -41,17 +42,20 @@ def load_experiment(
     topology = []
     ordered_seam_names = sorted(active_seam_names)
     active_definitions = []
-    active_types = [] # NEW list
-    
+    active_types = []
+
     for s_name in ordered_seam_names:
         seam = seam_lib[s_name]
         start_i = name_to_idx[seam.start_landmark]
         end_i   = name_to_idx[seam.end_landmark]
-        
+
         topology.append((start_i, end_i))
         active_definitions.append(seam)
-        active_types.append(seam.path_type) # NEW: Extract type
-        
+        active_types.append(seam.path_type)
+
+    # Collect all per-seam importances (including DUAL = 0.0).
+    active_importances = [seam.importance for seam in active_definitions]
+
     # 5. Create Instance
     instance = ProblemInstance(
         mesh_path=mesh_path,
@@ -62,8 +66,9 @@ def load_experiment(
         active_landmarks=active_landmarks,
         active_seam_topology=tuple(topology),
         active_seam_definitions=tuple(active_definitions),
-        active_seam_types=tuple(active_types), # NEW: Pass tuple
-        seam_names=tuple(ordered_seam_names)
+        active_seam_types=tuple(active_types),
+        seam_names=tuple(ordered_seam_names),
+        seam_importances=tuple(active_importances),
     )
     
     return instance

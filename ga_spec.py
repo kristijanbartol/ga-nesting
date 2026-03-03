@@ -14,7 +14,6 @@ class GAInstance:
     We keep some fields optional/fixed to enable incremental rollout.
     """
     num_patches: int
-    num_internal_seams: int
     K: int  # phase bins
     num_landmarks: int = 0  # needed for delta dimensionality (2 * num_landmarks)
     num_bodies: int = 1
@@ -38,7 +37,6 @@ class Genome:
     """
     Minimal subset we will actually optimize now:
       - kappa (per patch)
-      - w (per seam)
 
     We keep placeholders for future:
       delta, rho, pi, h
@@ -46,7 +44,6 @@ class Genome:
     delta: np.ndarray
     rho: np.ndarray
     kappa: np.ndarray
-    w: np.ndarray
     pi: np.ndarray
     h: int
 
@@ -111,7 +108,6 @@ def tournament_select(pop: Sequence[Individual], k: int, rng: random.Random) -> 
 
 def random_genome(inst: GAInstance, rng: random.Random) -> Genome:
     num_p = inst.num_patches
-    num_s = inst.num_internal_seams
 
     delta = inst.fixed_delta.copy() if inst.fixed_delta is not None else \
         np.array([rng.uniform(inst.delta_lo, inst.delta_hi) for _ in range(2 * inst.num_landmarks)], dtype=float)
@@ -135,9 +131,8 @@ def random_genome(inst: GAInstance, rng: random.Random) -> Genome:
         h = int(rng.randrange(H))
 
     kappa = np.array([rng.randrange(inst.K) for _ in range(num_p)], dtype=int)
-    w = np.array([rng.random() for _ in range(num_s)], dtype=float)
 
-    return Genome(delta=delta, rho=rho, kappa=kappa, w=w, pi=pi, h=h)
+    return Genome(delta=delta, rho=rho, kappa=kappa, pi=pi, h=h)
 
 
 
@@ -145,7 +140,6 @@ def crossover(g1: Genome, g2: Genome, inst: GAInstance, rng: random.Random) -> T
     """Crossover that preserves discrete constraints.
 
     - kappa: uniform per gene
-    - w: uniform per gene
     - rho: uniform per gene (0..3)
     - pi: choose whole permutation from one parent (keeps validity)
     """
@@ -161,12 +155,6 @@ def crossover(g1: Genome, g2: Genome, inst: GAInstance, rng: random.Random) -> T
     for i in range(k1.size):
         if rng.random() < 0.5:
             k1[i], k2[i] = k2[i], k1[i]
-
-    # w
-    w1, w2 = g1.w.copy(), g2.w.copy()
-    for i in range(w1.size):
-        if rng.random() < 0.5:
-            w1[i], w2[i] = w2[i], w1[i]
 
     # rho
     r1, r2 = g1.rho.copy(), g2.rho.copy()
@@ -185,8 +173,8 @@ def crossover(g1: Genome, g2: Genome, inst: GAInstance, rng: random.Random) -> T
     else:
         h1, h2 = g2.h, g1.h
 
-    c1 = Genome(delta=d1, rho=r1, kappa=k1, w=w1, pi=p1, h=int(h1))
-    c2 = Genome(delta=d2, rho=r2, kappa=k2, w=w2, pi=p2, h=int(h2))
+    c1 = Genome(delta=d1, rho=r1, kappa=k1, pi=p1, h=int(h1))
+    c2 = Genome(delta=d2, rho=r2, kappa=k2, pi=p2, h=int(h2))
     return c1, c2
 
 
@@ -195,7 +183,6 @@ def mutate(g: Genome, inst: GAInstance, cfg: GAConfig, rng: random.Random) -> Ge
     kappa = g.kappa.copy()
     rho = g.rho.copy()
     pi = g.pi.copy()
-    w = g.w.copy()
     delta = g.delta.copy()
 
     # gaussian noise on delta, clamp to allowed range
@@ -222,16 +209,12 @@ def mutate(g: Genome, inst: GAInstance, cfg: GAConfig, rng: random.Random) -> Ge
             b = rng.randrange(pi.size)
         pi[a], pi[b] = pi[b], pi[a]
 
-    # gaussian noise on weights, clamp to [0,1]
-    w = w + np.random.normal(0.0, cfg.weight_sigma, size=w.shape)
-    w = np.clip(w, 0.0, 1.0)
-
     h = int(g.h)
     if inst.fixed_h is None and rng.random() < cfg.prob_flip_h:
         H = max(1, int(inst.num_heuristics))
         h = int(rng.randrange(H))
 
-    return Genome(delta=delta, rho=rho, kappa=kappa, w=w, pi=pi, h=h)
+    return Genome(delta=delta, rho=rho, kappa=kappa, pi=pi, h=h)
 
 
 def _pop_table(pop: List[Individual], label: str) -> None:
@@ -251,8 +234,7 @@ def evaluate_population(pop: List[Individual], evaluator: Evaluator) -> None:
         if ind.fitness is None:
             kappa = ind.genome.kappa.tolist()
             delta_mean = float(np.mean(ind.genome.delta)) if ind.genome.delta.size > 0 else float("nan")
-            w = np.round(ind.genome.w, 2).tolist()
-            print(f"  [{i+1}/{total}] kappa={kappa}  delta_mean={delta_mean:.2f}  w={w}")
+            print(f"  [{i+1}/{total}] kappa={kappa}  delta_mean={delta_mean:.2f}")
             ind.fitness = evaluator(ind)
             f = ind.fitness.values
             print(f"         -> f1={f[0]:.2f}  f2={f[1]:.4f}  sum={f.sum():.4f}")

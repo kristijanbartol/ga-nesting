@@ -52,23 +52,21 @@ def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome,
     # 2) Stage2: compute transforms from seam constraints + kappas + weights
     constraints = load_seam_constraints_from_dir(seam_dir, weights_by_filename={}, default_weight=1.0)
 
-    V_full_by_id = load_patch_vertices_full_from_latest(latest_root, garment_part=garment_part, scale_mm=1000.0)
-    patch_ids = sorted(V_full_by_id.keys())
+    V_centered_by_id = load_patch_vertices_full_from_latest(
+        latest_root, garment_part=garment_part, scale_mm=1000.0, center_by_boundary=True)
+    patch_ids = sorted(V_centered_by_id.keys())
 
     kappas_by_id = {pid: int(genome.kappa[pid_to_item_idx[pid]]) for pid in patch_ids if pid in pid_to_item_idx}
 
-    # apply genome weights by seam-file order
-    weighted_constraints = []
-    for i, c in enumerate(constraints):
-        w = float(genome.w[i]) if i < genome.w.size else 1.0
-        weighted_constraints.append(type(c)(c.patch_i, c.patch_j, c.pairs, w, c.name))
+    # use constraints as-is (default_weight=1.0 already set by load_seam_constraints_from_dir)
+    weighted_constraints = constraints
 
     T0 = {pid: Rigid2D(0.0, 0.0, 0.0) for pid in patch_ids}
 
     Tsol = solve_global_alignment_all_components(
         patch_ids=patch_ids,
         constraints=weighted_constraints,
-        patch_vertices_by_id=V_full_by_id,
+        patch_vertices_by_id=V_centered_by_id,
         lattice=lattice,
         kappas_by_id=kappas_by_id,
         K=K,
@@ -112,8 +110,8 @@ def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome,
     # Plot per-seam phase mismatch
     from nesting.vis_utils import plot_seam_mismatch
     import re
-    kappas_by_id = {pid: int(genome.kappa[pid-1]) for pid in patch_ids if (pid-1) < genome.kappa.size}
-    plot_seam_mismatch(weighted_constraints, V_full_by_id, lattice, kappas_by_id, K, Tsol, title)
+    kappas_by_id = {pid: int(genome.kappa[pid_to_item_idx[pid]]) for pid in patch_ids if pid in pid_to_item_idx}
+    plot_seam_mismatch(weighted_constraints, V_centered_by_id, lattice, kappas_by_id, K, Tsol, title)
 
 
 def main():
@@ -134,15 +132,13 @@ def main():
     evaluator = RealEvaluator(eval_cfg)
 
     num_patches = len(evaluator.patch_ids)
-    num_seams = len(evaluator.constraints)
 
     inst = GAInstance(
         num_patches=num_patches,
-        num_internal_seams=num_seams,
         K=eval_cfg.K,
         num_landmarks=evaluator.instance.num_landmarks,
         num_bodies=eval_cfg.num_bodies,
-        fixed_rho=None,
+        fixed_rho=np.zeros(num_patches, dtype=float),
         fixed_pi=None,
         fixed_h=None,
         num_heuristics=3,
@@ -151,7 +147,7 @@ def main():
     cfg = GAConfig(
         seed=0,
         population_size=20,
-        generations=10,
+        generations=5,
         elite_count=3,
         tournament_k=4,
         crossover_prob=0.7,
@@ -167,13 +163,21 @@ def main():
 
     best = min(pop, key=lambda ind: ind.fitness.values.sum())
 
-    # Build a baseline genome: kappa=0 for all, weights=1 for all
+    # Build a baseline genome: kappa=0 for all
     base = deepcopy(best.genome)
     base.kappa[:] = 0
-    base.w[:] = 1.0
 
     print("\nBEST fitness:", best.fitness.values)
     print("BEST kappa:", best.genome.kappa)
+
+    # The geometry pipeline overwrites results/pattern/latest/ on every evaluation,
+    # so after the GA the patches on disk belong to the LAST evaluated individual —
+    # not the best.  Regenerate the best individual's patches before visualizing.
+    print("\n[main] Regenerating patches for best individual...")
+    from ga.geometry_block import run_geometry_blackbox_timeout
+    run_geometry_blackbox_timeout(
+        evaluator.instance, evaluator.mesh, best.genome.delta,
+        garment_part=GARMENT_TYPE)
 
     # Show baseline vs best NESTING (collision-free by construction)
     nest_and_show(eval_cfg.latest_root, eval_cfg.seam_dir, evaluator.lattice, evaluator.instance.texture,

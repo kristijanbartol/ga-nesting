@@ -10,56 +10,64 @@ def build_sleeveless_shirt_topology(landmark_lib):
     # 1. Neck Opening (Left Neck <-> Right Neck)
     # Usually a hole, so we use DUAL to get front/back collar lines
     seams["Neck_Opening"] = SeamDefinition(
-        "Neck_Opening", "Neck_L", "Neck_R", 
-        path_type=SeamPathType.DUAL 
+        "Neck_Opening", "Neck_L", "Neck_R",
+        path_type=SeamPathType.DUAL,
+        importance=0.0  # boundary opening — no neighboring patch
     )
-    
+
     # 2. Right Shoulder (Neck R <-> Shoulder R)
     seams["Shoulder_R"] = SeamDefinition(
-        "Shoulder_R", "Neck_R", "Shoulder_R", 
-        path_type=SeamPathType.GEODESIC
+        "Shoulder_R", "Neck_R", "Shoulder_R",
+        path_type=SeamPathType.GEODESIC,
+        importance=1.0  # shoulder seam — visible
     )
-    
+
     # 3. Right Armhole (Shoulder R <-> Armpit R)
-    # SPECIAL CASE: This is a single logical item, but geometry 
+    # SPECIAL CASE: This is a single logical item, but geometry
     # will cut two paths (Front/Back)
     seams["Armhole_R"] = SeamDefinition(
-        "Armhole_R", "Shoulder_R", "Armpit_R", 
-        path_type=SeamPathType.DUAL
+        "Armhole_R", "Shoulder_R", "Armpit_R",
+        path_type=SeamPathType.DUAL,
+        importance=0.0  # boundary opening — no neighboring patch
     )
-    
+
     # 4. Right Side Seam (Armpit R <-> Waist R)
     seams["Side_R"] = SeamDefinition(
-        "Side_R", "Armpit_R", "Waist_R", 
-        path_type=SeamPathType.GEODESIC
+        "Side_R", "Armpit_R", "Waist_R",
+        path_type=SeamPathType.GEODESIC,
+        importance=1.0  # side seam — visible
     )
-    
+
     # 5. Waist/Hem (Waist R <-> Waist L)
     # Assuming this loops around the back/front (Dual) or just a bottom cut?
     # Usually the bottom of a shirt is an opening.
     seams["Waist_Hem"] = SeamDefinition(
-        "Waist_Hem", "Waist_R", "Waist_L", 
-        path_type=SeamPathType.DUAL
+        "Waist_Hem", "Waist_R", "Waist_L",
+        path_type=SeamPathType.DUAL,
+        importance=0.0  # boundary opening — no neighboring patch
     )
-    
+
     # 6. Left Side Seam (Waist L <-> Armpit L)
     seams["Side_L"] = SeamDefinition(
-        "Side_L", "Waist_L", "Armpit_L", 
-        path_type=SeamPathType.GEODESIC
+        "Side_L", "Waist_L", "Armpit_L",
+        path_type=SeamPathType.GEODESIC,
+        importance=1.0  # side seam — visible
     )
-    
+
     # 7. Left Armhole (Armpit L <-> Shoulder L)
     seams["Armhole_L"] = SeamDefinition(
-        "Armhole_L", "Armpit_L", "Shoulder_L", 
-        path_type=SeamPathType.DUAL # Special Case
+        "Armhole_L", "Armpit_L", "Shoulder_L",
+        path_type=SeamPathType.DUAL,  # Special Case
+        importance=0.0  # boundary opening — no neighboring patch
     )
-    
+
     # 8. Left Shoulder (Shoulder L <-> Neck L)
     seams["Shoulder_L"] = SeamDefinition(
-        "Shoulder_L", "Shoulder_L", "Neck_L", 
-        path_type=SeamPathType.GEODESIC
+        "Shoulder_L", "Shoulder_L", "Neck_L",
+        path_type=SeamPathType.GEODESIC,
+        importance=1.0  # shoulder seam — visible
     )
-    
+
     return seams
 
 
@@ -71,88 +79,102 @@ def build_shirt_topology(landmark_lib):
     
     # 1. Neck Opening (Left Neck <-> Right Neck)
     seams["Neck_Opening"] = SeamDefinition(
-        "Neck_Opening", "Neck_L", "Neck_R", 
-        path_type=SeamPathType.DUAL 
+        "Neck_Opening", "Neck_L", "Neck_R",
+        path_type=SeamPathType.DUAL,
+        importance=0.0  # boundary opening — no neighboring patch
     )
-    
+
     # 2. Right Shoulder (Neck R <-> Shoulder R)
     seams["Shoulder_R"] = SeamDefinition(
-        "Shoulder_R", "Neck_R", "Shoulder_R", 
-        path_type=SeamPathType.GEODESIC
+        "Shoulder_R", "Neck_R", "Shoulder_R",
+        path_type=SeamPathType.GEODESIC,
+        importance=1.0  # shoulder seam — visible
     )
-    
+
     # 3. Right Upper Sleeve Seam (Shoulder R <-> Elbow R)
     seams["Sleeve_Upper_R"] = SeamDefinition(
         "Sleeve_Upper_R", "Sleeve_Up_R", "Shoulder_R",
-        path_type=SeamPathType.GEODESIC
+        path_type=SeamPathType.GEODESIC,
+        importance=0.7  # upper sleeve seam — visible
     )
 
     # 4. Right Sleeve Edge (Elbow R <-> Wrist R)
     seams["Sleeve_Edge_R"] = SeamDefinition(
         "Sleeve_Edge_R", "Sleeve_Up_R", "Sleeve_Down_R",
-        path_type=SeamPathType.DUAL
+        path_type=SeamPathType.DUAL,
+        importance=0.0  # boundary opening (cuff hem) — no neighboring patch
     )
 
     # 5. Right Lower Sleeve Seam (Wrist R <-> Armpit R)
     seams["Sleeve_Lower_R"] = SeamDefinition(
         "Sleeve_Lower_R", "Sleeve_Down_R", "Armpit_R",
-        path_type=SeamPathType.GEODESIC
+        path_type=SeamPathType.GEODESIC,
+        importance=0.6  # underarm sleeve seam — less visible
     )
 
     # 6. Right Armhole (Shoulder R <-> Armpit R)
     seams["Armhole_R"] = SeamDefinition(
-        "Armhole_R", "Shoulder_R", "Armpit_R", 
-        path_type=SeamPathType.DUAL
+        "Armhole_R", "Shoulder_R", "Armpit_R",
+        path_type=SeamPathType.DUAL,
+        importance=0.0  # boundary opening — no neighboring patch
     )
-    
+
     # 7. Right Side Seam (Armpit R <-> Waist R)
     seams["Side_R"] = SeamDefinition(
-        "Side_R", "Armpit_R", "Waist_R", 
-        path_type=SeamPathType.GEODESIC
+        "Side_R", "Armpit_R", "Waist_R",
+        path_type=SeamPathType.GEODESIC,
+        importance=1.0  # side seam — visible
     )
-    
+
     # 8. Waist/Hem (Waist R <-> Waist L)
     seams["Waist_Hem"] = SeamDefinition(
-        "Waist_Hem", "Waist_R", "Waist_L", 
-        path_type=SeamPathType.DUAL
+        "Waist_Hem", "Waist_R", "Waist_L",
+        path_type=SeamPathType.DUAL,
+        importance=0.0  # boundary opening — no neighboring patch
     )
-    
+
     # 9. Left Side Seam (Waist L <-> Armpit L)
     seams["Side_L"] = SeamDefinition(
-        "Side_L", "Waist_L", "Armpit_L", 
-        path_type=SeamPathType.GEODESIC
+        "Side_L", "Waist_L", "Armpit_L",
+        path_type=SeamPathType.GEODESIC,
+        importance=1.0  # side seam — visible
     )
-    
+
     # 10. Left Armhole (Armpit L <-> Shoulder L)
     seams["Armhole_L"] = SeamDefinition(
-        "Armhole_L", "Armpit_L", "Shoulder_L", 
-        path_type=SeamPathType.DUAL
+        "Armhole_L", "Armpit_L", "Shoulder_L",
+        path_type=SeamPathType.DUAL,
+        importance=0.0  # boundary opening — no neighboring patch
     )
 
     # 11. Left Upper Sleeve Seam (Shoulder L <-> Elbow L)
     seams["Sleeve_Upper_L"] = SeamDefinition(
         "Sleeve_Upper_L", "Sleeve_Up_L", "Shoulder_L",
-        path_type=SeamPathType.GEODESIC
+        path_type=SeamPathType.GEODESIC,
+        importance=0.7  # upper sleeve seam — visible
     )
 
     # 12. Left Sleeve Edge (Elbow L <-> Wrist L)
     seams["Sleeve_Edge_L"] = SeamDefinition(
         "Sleeve_Edge_L", "Sleeve_Up_L", "Sleeve_Down_L",
-        path_type=SeamPathType.DUAL
+        path_type=SeamPathType.DUAL,
+        importance=0.0  # boundary opening (cuff hem) — no neighboring patch
     )
 
     # 13. Left Lower Sleeve Seam (Wrist L <-> Armpit L)
     seams["Sleeve_Lower_L"] = SeamDefinition(
         "Sleeve_Lower_L", "Sleeve_Down_L", "Armpit_L",
-        path_type=SeamPathType.GEODESIC
+        path_type=SeamPathType.GEODESIC,
+        importance=0.6  # underarm sleeve seam — less visible
     )
 
     # 14. Left Shoulder (Shoulder L <-> Neck L)
     seams["Shoulder_L"] = SeamDefinition(
-        "Shoulder_L", "Shoulder_L", "Neck_L", 
-        path_type=SeamPathType.GEODESIC
+        "Shoulder_L", "Shoulder_L", "Neck_L",
+        path_type=SeamPathType.GEODESIC,
+        importance=1.0  # shoulder seam — visible
     )
-    
+
     return seams
 
 
@@ -177,55 +199,64 @@ def build_pant_topology(landmark_lib):
     # 1. Right outer side seam  (Hip_R -> Ankle_Outer_R)
     seams["Side_R"] = SeamDefinition(
         "Side_R", "Hip_R", "Ankle_Outer_R",
-        path_type=SeamPathType.GEODESIC
+        path_type=SeamPathType.GEODESIC,
+        importance=1.0  # outer side — most visible
     )
 
     # 2. Right leg hem opening  (DUAL: front + back hem paths)
     seams["Pant_End_R"] = SeamDefinition(
         "Pant_End_R", "Ankle_Outer_R", "Ankle_Inner_R",
-        path_type=SeamPathType.DUAL
+        path_type=SeamPathType.DUAL,
+        importance=0.0  # boundary opening — no neighboring patch
     )
 
     # 3. Right inseam  (Ankle_Inner_R -> Crotch_R)
     seams["Inner_Seam_R"] = SeamDefinition(
         "Inner_Seam_R", "Ankle_Inner_R", "Crotch_R",
-        path_type=SeamPathType.GEODESIC
+        path_type=SeamPathType.GEODESIC,
+        importance=0.3  # inner leg — hidden when worn
     )
 
     # 4. Front rise  (Crotch_R -> Waist_Front_L, front body surface)
     seams["Rise_Front"] = SeamDefinition(
         "Rise_Front", "Crotch_R", "Waist_Front_L",
-        path_type=SeamPathType.GEODESIC
+        path_type=SeamPathType.GEODESIC,
+        importance=1.0  # front crotch rise — visible
     )
 
     # 5. Back rise  (Crotch_L -> Waist_Back_L, back body surface)
     seams["Rise_Back"] = SeamDefinition(
         "Rise_Back", "Crotch_L", "Waist_Back_L",
-        path_type=SeamPathType.GEODESIC
+        path_type=SeamPathType.GEODESIC,
+        importance=0.8  # back crotch rise — visible but less than front
     )
 
     # 6. Left inseam  (Crotch_L -> Ankle_Inner_L)
     seams["Inner_Seam_L"] = SeamDefinition(
         "Inner_Seam_L", "Crotch_L", "Ankle_Inner_L",
-        path_type=SeamPathType.GEODESIC
+        path_type=SeamPathType.GEODESIC,
+        importance=0.3  # inner leg — hidden when worn
     )
 
     # 7. Left leg hem opening  (DUAL: front + back hem paths)
     seams["Pant_End_L"] = SeamDefinition(
         "Pant_End_L", "Ankle_Inner_L", "Ankle_Outer_L",
-        path_type=SeamPathType.DUAL
+        path_type=SeamPathType.DUAL,
+        importance=0.0  # boundary opening — no neighboring patch
     )
 
     # 8. Left outer side seam  (Ankle_Outer_L -> Hip_L)
     seams["Side_L"] = SeamDefinition(
         "Side_L", "Ankle_Outer_L", "Hip_L",
-        path_type=SeamPathType.GEODESIC
+        path_type=SeamPathType.GEODESIC,
+        importance=1.0  # outer side — most visible
     )
 
     # 9. Waistband opening  (DUAL: front + back waist hem paths)
     seams["Waist_Hem"] = SeamDefinition(
         "Waist_Hem", "Hip_R", "Hip_L",
-        path_type=SeamPathType.DUAL
+        path_type=SeamPathType.DUAL,
+        importance=0.0  # boundary opening — no neighboring patch
     )
 
     return seams

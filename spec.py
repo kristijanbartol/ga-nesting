@@ -34,10 +34,14 @@ class SeamDefinition:
     start_landmark: str
     end_landmark: str
     path_type: SeamPathType = SeamPathType.GEODESIC     # Hints the geometry engine on how to cut between these points
-    
+
     # NEW: Store specific geometric parameters here.
     # e.g. {"front_z": 0.05, "back_z": -0.1}
     geometry_hints: Dict[str, float] = field(default_factory=dict)
+
+    # Static importance weight for texture alignment (0.0 = excluded).
+    # DUAL (boundary) seams default to 0.0; GEODESIC interior seams set explicitly.
+    importance: float = 0.0
 
 # ==============================================================================
 # 2. PROBLEM CONTEXT (Immutable)
@@ -78,12 +82,15 @@ class ProblemInstance:
     active_seam_topology: Tuple[Tuple[int, int], ...] # Indices into active_landmarks
 
     seam_names: Tuple[str, ...]
-    
+
     # Store the full objects, not just types, so we can access 'geometry_hints'
     active_seam_definitions: Tuple[SeamDefinition, ...]
-    
+
     # Genotype.alpha[i] corresponds to active_seam_types[i]
     active_seam_types: Tuple[SeamPathType, ...]
+
+    # Per-seam static importance weights (all seams, incl. DUAL with 0.0).
+    seam_importances: Tuple[float, ...] = ()
 
     @property
     def num_landmarks(self) -> int:
