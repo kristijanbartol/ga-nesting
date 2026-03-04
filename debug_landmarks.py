@@ -39,7 +39,7 @@ def main():
     V = mesh.vertices
     tree = cKDTree(V)
 
-    source = {**CORE_LANDMARKS["Upper"], **LONG_LANDMARKS["Upper"]}
+    source = {**CORE_LANDMARKS["Lower"], **LONG_LANDMARKS["Lower"]}
     lib = generate_symmetric_landmarks(mesh, source)
 
     print(f"{'Landmark':<22}  {'vtx_idx':>8}   position (x, y, z)")

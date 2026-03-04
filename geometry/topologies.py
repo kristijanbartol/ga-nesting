@@ -19,7 +19,7 @@ def build_sleeveless_shirt_topology(landmark_lib):
     seams["Shoulder_R"] = SeamDefinition(
         "Shoulder_R", "Neck_R", "Shoulder_R",
         path_type=SeamPathType.GEODESIC,
-        importance=1.0  # shoulder seam — visible
+        importance=0.0  # shoulder seam — visible
     )
 
     # 3. Right Armhole (Shoulder R <-> Armpit R)
@@ -65,7 +65,7 @@ def build_sleeveless_shirt_topology(landmark_lib):
     seams["Shoulder_L"] = SeamDefinition(
         "Shoulder_L", "Shoulder_L", "Neck_L",
         path_type=SeamPathType.GEODESIC,
-        importance=1.0  # shoulder seam — visible
+        importance=0.0  # shoulder seam — visible
     )
 
     return seams
@@ -224,16 +224,23 @@ def build_pant_topology(landmark_lib):
         importance=1.0  # front crotch rise — visible
     )
 
-    # 5. Back rise  (Crotch_L -> Waist_Back_L, back body surface)
+    # 5. Back rise  (Crotch_R -> Waist_Back_L, back body surface)
+    # NOTE: uses Crotch_R (same as Rise_Front and Inner_Seam_R) so that all four
+    # crotch seams share a single mesh vertex.  Crotch_L and Crotch_R are generated
+    # by x-flipping Crotch and doing a KDTree snap; because the crotch vertices are
+    # not exactly on the x=0 midline they resolve to different mesh vertices, leaving
+    # an uncut "bridge" that merges two patches.  Using the same landmark for all
+    # four seams guarantees they meet at one point and produces the correct 4 patches.
     seams["Rise_Back"] = SeamDefinition(
-        "Rise_Back", "Crotch_L", "Waist_Back_L",
+        "Rise_Back", "Crotch_R", "Waist_Back_L",
         path_type=SeamPathType.GEODESIC,
         importance=0.8  # back crotch rise — visible but less than front
     )
 
-    # 6. Left inseam  (Crotch_L -> Ankle_Inner_L)
+    # 6. Left inseam  (Crotch_R -> Ankle_Inner_L)
+    # See note on Rise_Back above — Crotch_R used for the same reason.
     seams["Inner_Seam_L"] = SeamDefinition(
-        "Inner_Seam_L", "Crotch_L", "Ankle_Inner_L",
+        "Inner_Seam_L", "Crotch_R", "Ankle_Inner_L",
         path_type=SeamPathType.GEODESIC,
         importance=0.3  # inner leg — hidden when worn
     )

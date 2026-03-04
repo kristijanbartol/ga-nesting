@@ -211,7 +211,20 @@ def plot_seam_mismatch(constraints, V_full_by_id, lattice, kappas_by_id, K, tran
         mismatch = delta.mean(axis=1)                  # (N,) per point
 
         ax.plot(mismatch, lw=1.2)
-        ax.axhline(mismatch.mean(), color='red', lw=1, linestyle='--', label=f'mean={mismatch.mean():.3f}')
+
+        # Arc-length weighted mean (matches the fitness function)
+        if len(pts_i) >= 2:
+            seg_lengths = np.linalg.norm(np.diff(pts_i, axis=0), axis=1)
+            arc_weights = np.empty(len(pts_i), dtype=float)
+            arc_weights[0]    = seg_lengths[0] / 2.0
+            arc_weights[1:-1] = (seg_lengths[:-1] + seg_lengths[1:]) / 2.0
+            arc_weights[-1]   = seg_lengths[-1] / 2.0
+            total_length = arc_weights.sum()
+            weighted_mean = float(np.dot(arc_weights, mismatch) / total_length) if total_length > 1e-12 else float(mismatch.mean())
+        else:
+            weighted_mean = float(mismatch.mean())
+
+        ax.axhline(weighted_mean, color='red', lw=1, linestyle='--', label=f'mean={weighted_mean:.3f}')
         ax.set_ylim(0, 0.5)
         ax.set_xlabel('point index along seam')
         ax.set_ylabel('Δ phase')

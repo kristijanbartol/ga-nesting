@@ -50,7 +50,7 @@ def build_instance(
     full_landmark_lib = generate_symmetric_landmarks(mesh, cfg["landmark_fn"]())
     seams = cfg["topology"](full_landmark_lib)
 
-    texture_spec = TextureSpec("Stripes", 10.0, 100.0)
+    texture_spec = TextureSpec("Stripes", 10.0, 50.0)
 
     instance = load_experiment(
         mesh_path=mesh_path,

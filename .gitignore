@@ -3,6 +3,7 @@ data/
 .DS_Store
 
 anisotropic-parameterization/
+newton/
 potpourri3d/
 
 *.ply

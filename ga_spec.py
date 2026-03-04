@@ -21,8 +21,8 @@ class GAInstance:
     # Constrain delta sampling and mutation to [delta_lo, delta_hi] around the
     # 0.5 baseline, reducing the chance of landmarks landing in geometrically
     # degenerate mesh regions. Full range is [0.0, 1.0].
-    delta_lo: float = 0.3
-    delta_hi: float = 0.7
+    delta_lo: float = 0.4
+    delta_hi: float = 0.6
 
     # Optional: fixed values to keep pipeline simple initially
     fixed_delta: Optional[np.ndarray] = None

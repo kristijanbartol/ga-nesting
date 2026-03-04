@@ -31,7 +31,7 @@ def apply_kappa_to_items(items, genome, K, texture, pid_to_item_idx):
         it.phase_offset = ((k / float(K)) * tx, (k / float(K)) * ty)
 
 
-def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome, K, title, garment_part):
+def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome, K, title, garment_part, seam_importances=None):
     loader = PatchLoader(latest_root, garment_part)
     items = loader.load_items()
 
@@ -58,8 +58,15 @@ def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome,
 
     kappas_by_id = {pid: int(genome.kappa[pid_to_item_idx[pid]]) for pid in patch_ids if pid in pid_to_item_idx}
 
-    # use constraints as-is (default_weight=1.0 already set by load_seam_constraints_from_dir)
-    weighted_constraints = constraints
+    # Apply the same importance weights as the evaluator so Stage2 optimizes
+    # the correct seams (not a compromise across all seams equally).
+    if seam_importances is not None:
+        weighted_constraints = []
+        for i, c in enumerate(constraints):
+            imp = float(seam_importances[i]) if i < len(seam_importances) else 1.0
+            weighted_constraints.append(type(c)(c.patch_i, c.patch_j, c.pairs, imp, c.name))
+    else:
+        weighted_constraints = constraints
 
     T0 = {pid: Rigid2D(0.0, 0.0, 0.0) for pid in patch_ids}
 
@@ -146,9 +153,9 @@ def main():
 
     cfg = GAConfig(
         seed=0,
-        population_size=20,
-        generations=5,
-        elite_count=3,
+        population_size=4,
+        generations=2,
+        elite_count=1,
         tournament_k=4,
         crossover_prob=0.7,
         mutation_prob=0.7,
@@ -179,11 +186,18 @@ def main():
         evaluator.instance, evaluator.mesh, best.genome.delta,
         garment_part=GARMENT_TYPE)
 
+    # Run cloth simulation for the best individual
+    print("\n[main] Running cloth simulation for best individual...")
+    from geometry.simulation import run_headless_simulation
+    run_headless_simulation(avatar='data/SMPL_FEMALE_POSED.ply')
+
     # Show baseline vs best NESTING (collision-free by construction)
     nest_and_show(eval_cfg.latest_root, eval_cfg.seam_dir, evaluator.lattice, evaluator.instance.texture,
-                eval_cfg.fabric_width_mm, base, eval_cfg.K, "BASELINE (kappa=0)", GARMENT_TYPE)
+                eval_cfg.fabric_width_mm, base, eval_cfg.K, "BASELINE (kappa=0)", GARMENT_TYPE,
+                seam_importances=evaluator.seam_importances)
     nest_and_show(eval_cfg.latest_root, eval_cfg.seam_dir, evaluator.lattice, evaluator.instance.texture,
-                eval_cfg.fabric_width_mm, best.genome, eval_cfg.K, "BEST (GA kappa)", GARMENT_TYPE)
+                eval_cfg.fabric_width_mm, best.genome, eval_cfg.K, "BEST (GA kappa)", GARMENT_TYPE,
+                seam_importances=evaluator.seam_importances)
 
 
 if __name__ == "__main__":

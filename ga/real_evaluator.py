@@ -111,7 +111,8 @@ class RealEvaluator:
 
         # 1) Build instance + mesh (topology/landmarks dispatched by garment_part)
         self.instance, self.mesh = build_instance(
-            mesh_path="data/SMPL_FEMALE_POSED.ply",
+            #mesh_path="data/SMPL_FEMALE_POSED.ply",
+            mesh_path="data/SMPL_FEMALE.ply",
             fabric_width=cfg.fabric_width_mm / 1000.0,
             garment_type=cfg.garment_part,
         )
