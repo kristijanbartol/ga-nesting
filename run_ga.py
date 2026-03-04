@@ -186,11 +186,6 @@ def main():
         evaluator.instance, evaluator.mesh, best.genome.delta,
         garment_part=GARMENT_TYPE)
 
-    # Run cloth simulation for the best individual
-    print("\n[main] Running cloth simulation for best individual...")
-    from geometry.simulation import run_headless_simulation
-    run_headless_simulation(avatar='data/SMPL_FEMALE_POSED.ply')
-
     # Show baseline vs best NESTING (collision-free by construction)
     nest_and_show(eval_cfg.latest_root, eval_cfg.seam_dir, evaluator.lattice, evaluator.instance.texture,
                 eval_cfg.fabric_width_mm, base, eval_cfg.K, "BASELINE (kappa=0)", GARMENT_TYPE,
@@ -198,6 +193,11 @@ def main():
     nest_and_show(eval_cfg.latest_root, eval_cfg.seam_dir, evaluator.lattice, evaluator.instance.texture,
                 eval_cfg.fabric_width_mm, best.genome, eval_cfg.K, "BEST (GA kappa)", GARMENT_TYPE,
                 seam_importances=evaluator.seam_importances)
+    
+    # Run cloth simulation for the best individual
+    print("\n[main] Running cloth simulation for best individual...")
+    from geometry.simulation import run_headless_simulation
+    run_headless_simulation(avatar='data/SMPL_FEMALE_POSED.ply')
 
 
 if __name__ == "__main__":

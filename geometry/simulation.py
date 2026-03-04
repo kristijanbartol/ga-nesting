@@ -16,6 +16,8 @@ import newton
 import newton.examples
 from newton import Mesh, ParticleFlags
 
+from geometry.param_mesh_uv import add_uv_coordinates, trimesh_to_plydata
+
 
 PANTS = False
 HORSE = False
@@ -34,7 +36,9 @@ def read_patches(is_adapt=False):
         patch_mesh = patch_mesh.subdivide()
         patch_meshes.append(patch_mesh)
     merged_mesh = trimesh.util.concatenate(patch_meshes)
-    return trimesh.Trimesh(vertices=merged_mesh.vertices, faces=merged_mesh.faces, process=True)
+    merged = trimesh.Trimesh(vertices=merged_mesh.vertices, faces=merged_mesh.faces, process=True)
+    unmerged = trimesh.Trimesh(vertices=merged_mesh.vertices, faces=merged_mesh.faces, process=False)
+    return merged, unmerged
 
 
 def read_back_idxs():
@@ -130,7 +134,7 @@ class Example:
         #self.scale = 10     # scale up to improve simulation result
         self.scale = 5     # scale up to improve simulation result
 
-        garment_mesh_3d = read_patches(is_adapt)
+        garment_mesh_3d, garment_mesh_3d_unmerged = read_patches(is_adapt)
         garment_mesh_2d = read_sewing_pattern()
 
         if PANTS:
@@ -139,6 +143,23 @@ class Example:
         assert len(garment_mesh_3d.faces) == len(garment_mesh_2d.faces)
 
         self.cloth_faces = garment_mesh_3d.faces.copy()   # (F, 3) int
+
+        # UV export: store unmerged faces and UV coords (pre-scale, 2D pattern space)
+        assert len(garment_mesh_3d_unmerged.vertices) == len(garment_mesh_2d.vertices), (
+            f"UV vertex mismatch: {len(garment_mesh_3d_unmerged.vertices)} vs {len(garment_mesh_2d.vertices)}"
+        )
+        self.unmerged_faces = garment_mesh_3d_unmerged.faces.copy()
+        self.garment_mesh_uv = garment_mesh_2d.vertices[:, :2].copy()
+
+        # Map each unmerged vertex -> its merged vertex index (for position propagation)
+        groups = trimesh.grouping.group_rows(garment_mesh_3d_unmerged.vertices, digits=6)
+        unmerged_to_merged_dict = {}
+        for group in groups:
+            merged_idx = int(garment_mesh_3d.kdtree.query(garment_mesh_3d_unmerged.vertices[group[0]])[1])
+            for idx in group:
+                unmerged_to_merged_dict[idx] = merged_idx
+        N_unmerged = len(garment_mesh_3d_unmerged.vertices)
+        self.unmerged_to_merged = np.array([unmerged_to_merged_dict[i] for i in range(N_unmerged)], dtype=np.int32)
         self.save_every = 10
         self.frame_idx = 0
         self.out_dir = Path("./results/simulation/upper/")
@@ -263,10 +284,12 @@ class Example:
         self.capture()
 
     def save_frame_ply(self):
-        V = self.state_0.particle_q.numpy().astype(np.float32) / self.scale     # scale back to original size
-        mesh = trimesh.Trimesh(vertices=V, faces=self.cloth_faces, process=False)
-        mesh.apply_transform(trimesh.transformations.rotation_matrix(-np.pi / 2, [1, 0, 0]))    # rotate back to original ("laying down")
-        mesh.export(self.out_dir / f"cloth_{self.frame_idx:05d}.ply")
+        V_merged = self.state_0.particle_q.numpy().astype(np.float32) / self.scale
+        V_unmerged = V_merged[self.unmerged_to_merged]
+        mesh = trimesh.Trimesh(vertices=V_unmerged, faces=self.unmerged_faces, process=False)
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(-np.pi / 2, [1, 0, 0]))
+        out_path = str(self.out_dir / f"cloth_{self.frame_idx:05d}.ply")
+        add_uv_coordinates(trimesh_to_plydata(mesh), self.garment_mesh_uv, out_path)
 
     def capture(self):
         if wp.get_device().is_cuda:
