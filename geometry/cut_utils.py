@@ -30,7 +30,7 @@ def perform_global_cut(paths_to_cut, vertices, faces):
 
     patches, patch_faces, valid_patch_idxs, vertex_patch_index_map = extract_and_save_patch_meshes(cut_mesh, v_patch_idxs_dict, excluded_patch_idxs)
 
-    seamlines_dict_list, symmetric_seamline_flags = extract_seamlines(patches, updated_cut_indices, valid_patch_idxs, vertex_patch_index_map)
+    seamlines_dict_list, symmetric_seamline_flags, seam_batch_indices = extract_seamlines(patches, updated_cut_indices, valid_patch_idxs, vertex_patch_index_map)
     
     # 1. Flatten index list
     all_indices = np.concatenate(cut_indices)
@@ -47,7 +47,7 @@ def perform_global_cut(paths_to_cut, vertices, faces):
     pc.export('cut_indices.ply')
     trimesh.Trimesh(vertices=cut_vertices, faces=cut_faces).export('cut_mesh.ply')
 
-    return trimesh.Trimesh(vertices=cut_vertices, faces=cut_faces), patches, patch_faces, seamlines_dict_list, symmetric_seamline_flags, valid_patch_idxs
+    return trimesh.Trimesh(vertices=cut_vertices, faces=cut_faces), patches, patch_faces, seamlines_dict_list, symmetric_seamline_flags, valid_patch_idxs, seam_batch_indices
 
 
 # cut all paths in the list of indices of paths_to_cut
@@ -315,12 +315,16 @@ def extract_seamlines(patches, boundary_indices_array, valid_patch_idxs, vertex_
 
     Each seamline is a separate entry and always belongs to a single pair of patches (although not vice versa).
     The boundaries (other) are on the border of the garment and connect with the excluded patches (e.g., face etc.).
-    
+
     vertex_patch_index_map: {vidx: {label: patch_vidx}}, e.g., {115: {3: 312, 4: 1117, 6: 2}}
     seamlines_dict_list: [{(patch_idx1, patch_idx2): [(vidx_patch1, vidx_patch2)]}]
+
+    Also returns seam_batch_indices: for each entry in seamlines_dict_list, the index of the
+    corresponding path in boundary_indices_array that produced it.
     '''
     seamlines_dict_list = []
-    for boundary_indices in boundary_indices_array:
+    seam_batch_indices = []
+    for batch_idx, boundary_indices in enumerate(boundary_indices_array):
         seamlines_dict = defaultdict(list)
         is_seamline = True
 
@@ -348,7 +352,8 @@ def extract_seamlines(patches, boundary_indices_array, valid_patch_idxs, vertex_
         # Finally, add only the seamlines (not other boundaries).
         if is_seamline and len(seamlines_dict) > 0:
             seamlines_dict_list.append(seamlines_dict)
-        
+            seam_batch_indices.append(batch_idx)
+
     symmetric_seamline_flags = [False] * len(seamlines_dict_list)
     for seam_idx in range(len(seamlines_dict_list)):
         patch_pair, vertex_pairs_list = next(iter(seamlines_dict_list[seam_idx].items()))    # take the one and only seam (using dictionary to have the label pair (patch1_idx, patch2_idx))
@@ -358,4 +363,4 @@ def extract_seamlines(patches, boundary_indices_array, valid_patch_idxs, vertex_
         if np.mean(np.abs(verts[:, 0]) < 9e-3) > 0.9:
             symmetric_seamline_flags[seam_idx] = True
 
-    return seamlines_dict_list, symmetric_seamline_flags
+    return seamlines_dict_list, symmetric_seamline_flags, seam_batch_indices

@@ -47,20 +47,46 @@ def read_back_idxs():
     return back_idxs
 
 
+def _outer_boundary_centroid_mm(mesh):
+    """Centroid of the outer boundary loop in mm (same as Stage2 preprocessing)."""
+    from nesting.utils import boundary_loops_from_edges, polygon_area_2d
+    V2 = mesh.vertices[:, :2] * 1000.0
+    ue = trimesh.grouping.group_rows(mesh.edges_sorted, require_count=1)
+    be = mesh.edges[ue]
+    loops = boundary_loops_from_edges(be)
+    areas = [abs(polygon_area_2d(V2[lp])) for lp in loops]
+    outer = loops[int(np.argmax(areas))]
+    return V2[outer].mean(axis=0)
+
+
 def read_sewing_pattern():
+    """Returns the merged 2D simulation mesh and patch_info list.
+
+    patch_info: list of (patch_id, vertex_start, vertex_end, was_y_flipped, boundary_centroid_mm)
+      - vertex ranges index into the merged UV array
+      - boundary_centroid_mm matches the Stage2 solver's centering convention
+    """
     param_2d_dir = os.path.join(f'results/pattern/latest/upper/')
     back_idxs = read_back_idxs()
     patch_2d_meshes = []
+    patch_info = []
+    vertex_offset = 0
     for patch_dirname in sorted(os.listdir(param_2d_dir)):
         patch_dir = f'{param_2d_dir}/{patch_dirname}/'
         patch_idx = int(patch_dirname[-2:])
         param_2d_mesh = trimesh.load(os.path.join(patch_dir, 'optim_final-seams.ply'))
-        if patch_idx in back_idxs:
+        # Boundary centroid from un-flipped mesh, same as Stage2 preprocessing
+        bm_mm = _outer_boundary_centroid_mm(param_2d_mesh)
+        flipped = patch_idx in back_idxs
+        if flipped:
             param_2d_mesh.vertices[:, 1] *= -1
         param_2d_mesh = param_2d_mesh.subdivide()
+        n = len(param_2d_mesh.vertices)
+        patch_info.append((patch_idx, vertex_offset, vertex_offset + n, flipped, bm_mm))
+        vertex_offset += n
         patch_2d_meshes.append(param_2d_mesh)
     merged_mesh = trimesh.util.concatenate(patch_2d_meshes)
-    return trimesh.Trimesh(vertices=merged_mesh.vertices, faces=merged_mesh.faces, process=False)
+    return trimesh.Trimesh(vertices=merged_mesh.vertices, faces=merged_mesh.faces, process=False), patch_info
 
 
 class HeadlessViewer:
@@ -116,7 +142,9 @@ def extract_upper_rim(garment_verts, garment_faces):
 
 class Example:
 
-    def __init__(self, viewer, avatar, is_adapt=False):
+    def __init__(self, viewer, avatar, is_adapt=False,
+                 tsol=None, kappas_by_id=None, K=None,
+                 period_u_mm=None, period_v_mm=None):
         # setup simulation parameters first
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
@@ -135,7 +163,7 @@ class Example:
         self.scale = 5     # scale up to improve simulation result
 
         garment_mesh_3d, garment_mesh_3d_unmerged = read_patches(is_adapt)
-        garment_mesh_2d = read_sewing_pattern()
+        garment_mesh_2d, patch_info = read_sewing_pattern()
 
         if PANTS:
             rim_idxs = extract_upper_rim(garment_mesh_3d.vertices, garment_mesh_3d.faces)
@@ -144,12 +172,15 @@ class Example:
 
         self.cloth_faces = garment_mesh_3d.faces.copy()   # (F, 3) int
 
-        # UV export: store unmerged faces and UV coords (pre-scale, 2D pattern space)
+        # UV export: store unmerged faces and UV coords
         assert len(garment_mesh_3d_unmerged.vertices) == len(garment_mesh_2d.vertices), (
             f"UV vertex mismatch: {len(garment_mesh_3d_unmerged.vertices)} vs {len(garment_mesh_2d.vertices)}"
         )
         self.unmerged_faces = garment_mesh_3d_unmerged.faces.copy()
-        self.garment_mesh_uv = garment_mesh_2d.vertices[:, :2].copy()
+        self.garment_mesh_uv = self._build_fabric_uv(
+            garment_mesh_2d.vertices[:, :2], patch_info,
+            tsol, kappas_by_id, K, period_u_mm, period_v_mm
+        )
 
         # Map each unmerged vertex -> its merged vertex index (for position propagation)
         groups = trimesh.grouping.group_rows(garment_mesh_3d_unmerged.vertices, digits=6)
@@ -283,6 +314,42 @@ class Example:
 
         self.capture()
 
+    @staticmethod
+    def _build_fabric_uv(raw_uv, patch_info, tsol, kappas_by_id, K, period_u_mm, period_v_mm):
+        """Apply Stage2 transforms + kappa phase offsets to get fabric-space UV.
+
+        raw_uv: (N, 2) array in metres from the 2D parameterisation (may have
+                y-flipped rows for back patches — un-flipped here before transform).
+        patch_info: list of (patch_id, start, end, was_y_flipped, boundary_centroid_mm).
+        Returns UV in mm in fabric space, ready for Polyscope texture mapping after
+        dividing by (period_u_mm, period_v_mm).
+        """
+        from nesting.phase_utils import Rigid2D
+
+        if tsol is None:
+            return raw_uv * 1000.0
+
+        fabric_uv = np.empty_like(raw_uv)
+        for pid, start, end, was_flipped, bm_mm in patch_info:
+            uv_slice = raw_uv[start:end].copy()
+
+            # Un-flip back patches to restore original parameterisation space
+            if was_flipped:
+                uv_slice[:, 1] *= -1
+
+            # Scale to mm and center by outer boundary mean (same as Stage2 preprocessing)
+            uv_c = uv_slice * 1000.0 - bm_mm
+
+            T = tsol.get(pid, Rigid2D(0.0, 0.0, 0.0))
+            uv_t = T.apply(uv_c)
+
+            k = kappas_by_id.get(pid, 0)
+            uv_t += (k / K) * np.array([period_u_mm, period_v_mm])
+
+            fabric_uv[start:end] = uv_t
+
+        return fabric_uv
+
     def save_frame_ply(self):
         V_merged = self.state_0.particle_q.numpy().astype(np.float32) / self.scale
         V_unmerged = V_merged[self.unmerged_to_merged]
@@ -343,9 +410,13 @@ def run_simulation(avatar):
     #newton.examples.run(example)
 
 
-def run_headless_simulation(avatar, is_adapt=False):
+def run_headless_simulation(avatar, is_adapt=False,
+                             tsol=None, kappas_by_id=None, K=None,
+                             period_u_mm=None, period_v_mm=None):
     viewer = HeadlessViewer()
-    example = Example(viewer, avatar, is_adapt)
+    example = Example(viewer, avatar, is_adapt,
+                      tsol=tsol, kappas_by_id=kappas_by_id, K=K,
+                      period_u_mm=period_u_mm, period_v_mm=period_v_mm)
 
     # run headless for some number of frames
     num_frames = 60  # 1 secons @ 60 fps

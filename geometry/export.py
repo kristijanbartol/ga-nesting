@@ -18,14 +18,17 @@ def export_patches(patches, target_patches_list, valid_patch_idxs, garment_part)
                     target_patches_list[target_idx][patch_idx].export(f'{patch_dir}/target-{target_idx}.{ext}')
 
 
-def export_seamlines(seamlines_dict_list, symmetric_seamline_flags, garment_part):
+def export_seamlines(seamlines_dict_list, symmetric_seamline_flags, garment_part, seam_names=None):
     seamline_dir = f'data/seamlines/{garment_part}/'
     if os.path.isdir(seamline_dir):
         shutil.rmtree(seamline_dir)
     os.makedirs(seamline_dir)
     for seamline_idx, seamline_dict in enumerate(seamlines_dict_list):
+        # Use seam name in filename when available so importance can be matched by name,
+        # not by fragile sequential index (which shifts when short seams are filtered out).
+        label = seam_names[seamline_idx] if seam_names and seamline_idx < len(seam_names) else str(seamline_idx)
         for patch_pair in seamline_dict:
-            fpath = f'{seamline_dir}/seam-{seamline_idx}_{patch_pair[0]}-{patch_pair[1]}.txt'
+            fpath = f'{seamline_dir}/seam-{label}_{patch_pair[0]}-{patch_pair[1]}.txt'
             with open(fpath, mode='w') as seam_f:
                 seam_f.write('1\n' if symmetric_seamline_flags[seamline_idx] else '0\n')
                 seam_f.write(f'{patch_pair[0]}\n{patch_pair[1]}\n')
@@ -80,9 +83,9 @@ def create_latest_dir(valid_patch_idxs, garment_part):
     os.makedirs(scales_dir)
 
 
-def export_data(patches, valid_patch_idxs, garment_part, seamlines_dict_list, symmetric_seamline_flags, patch_labels_dict, mesh):
+def export_data(patches, valid_patch_idxs, garment_part, seamlines_dict_list, symmetric_seamline_flags, patch_labels_dict, mesh, seam_names=None):
     export_patches(patches, [], valid_patch_idxs, garment_part)
-    export_seamlines(seamlines_dict_list, symmetric_seamline_flags, garment_part)
+    export_seamlines(seamlines_dict_list, symmetric_seamline_flags, garment_part, seam_names=seam_names)
     export_scales(mesh, patches, valid_patch_idxs, garment_part, is_skirtified=False)
     export_patch_labels(patch_labels_dict, garment_part)
     create_latest_dir(valid_patch_idxs, garment_part)

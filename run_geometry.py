@@ -73,7 +73,7 @@ landmarks_batch = builder.build_batch(vertex_ids)
 
 # step 3 - cutting
 for garment_part in ['upper']:
-    cut_mesh, patches, patch_faces, seamlines_dict_list, symmetric_seamline_flags, valid_patch_idxs = perform_global_cut(landmarks_batch, mesh.vertices, mesh.faces)
+    cut_mesh, patches, patch_faces, seamlines_dict_list, symmetric_seamline_flags, valid_patch_idxs, _seam_batch_indices = perform_global_cut(landmarks_batch, mesh.vertices, mesh.faces)
     patch_labels_dict = assign_patch_labels(patches, garment_part, valid_patch_idxs, mesh.vertices[SHOULDER_KPT_IDX])
     
     export_data( 

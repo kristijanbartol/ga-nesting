@@ -124,24 +124,27 @@ class RealEvaluator:
         # 3) Run geometry blackbox ONCE to generate results/pattern/latest and data/seamlines
         run_geometry_blackbox_timeout(self.instance, self.mesh, self.delta_baseline, garment_part=cfg.garment_part)
 
-        # 4) Load seam constraints list once (order is stable: sorted filenames)
-        self.constraints = load_seam_constraints_from_dir(cfg.seam_dir, weights_by_filename={}, default_weight=1.0)
-
-        # 5a) Build per-constraint static importance weights from topology.
-        # Only GEODESIC seams generate constraint files (DUAL boundary seams are
-        # filtered out by extract_seamlines). The GEODESIC seams appear in the
-        # constraint files in the same alphabetical order as in active_seam_definitions,
-        # so a simple filter-and-index approach is correct.
-        geodesic_importances = [
-            seam.importance
+        # 4) Build seam name → importance mapping from topology.
+        # Constraint files are now named seam-{SeamName}_{pi}-{pj}.txt so we can match
+        # by name rather than by fragile sequential index (which shifts when short seams
+        # such as Shoulder_L/R are filtered out by extract_seamlines, causing all
+        # importances to be applied to the wrong seams and f2 to be always 0).
+        self._seam_importance_by_name = {
+            seam.name: seam.importance
             for seam in self.instance.active_seam_definitions
             if seam.path_type == SeamPathType.GEODESIC
-        ]
-        self.seam_importances = (
-            np.array(geodesic_importances, dtype=float)
-            if geodesic_importances
-            else np.ones(len(self.constraints), dtype=float)
+        }
+
+        # Load constraints once (for diagnostics / patch ID discovery).
+        self.constraints = load_seam_constraints_from_dir(
+            cfg.seam_dir,
+            weights_by_filename=self._weights_by_filename(cfg.seam_dir),
+            default_weight=0.0,
         )
+
+        # 5a) Log the effective importance per constraint for diagnostics.
+        for c in self.constraints:
+            print(f"  seam '{c.name}' weight={c.weight:.3f}")
 
         # 5) Load patch IDs once
         self.V_full_by_id = load_patch_vertices_full_from_latest(cfg.latest_root, garment_part=cfg.garment_part, scale_mm=1000.0)
@@ -158,10 +161,24 @@ class RealEvaluator:
         print("[RealEvaluator] Initialized.")
         print(f"  patches: {self.patch_ids}  ({len(self.patch_ids)} total)")
         print(f"  seams:   {len(self.constraints)}")
-        print(f"  seam importances (GEODESIC only): {self.seam_importances.tolist()}")
         print(f"  fabric:  {cfg.fabric_width_mm:.0f}mm wide"
               f"  period={cfg.period_u_mm:.0f}x{cfg.period_v_mm:.0f}mm  K={cfg.K}")
         print(f"  weights: w1(height)={cfg.w1}  w2(phase)={cfg.w2}  w3(distortion)={cfg.w3}")
+
+    def _weights_by_filename(self, seam_dir: str) -> dict:
+        """Build {filename: importance} by extracting seam name from each file's name."""
+        import re as _re
+        result = {}
+        if not os.path.isdir(seam_dir):
+            return result
+        for fn in os.listdir(seam_dir):
+            if not (fn.startswith("seam-") and fn.endswith(".txt")):
+                continue
+            m = _re.match(r"seam-(.+)_\d+-\d+\.txt$", fn)
+            if m:
+                seam_name = m.group(1)
+                result[fn] = self._seam_importance_by_name.get(seam_name, 0.0)
+        return result
 
     def __call__(self, ind: Individual) -> Fitness:
         g = ind.genome
@@ -174,7 +191,11 @@ class RealEvaluator:
             t0 = time.time()
             print("         [geo] running...", flush=True)
             run_geometry_blackbox_timeout(self.instance, self.mesh, g.delta, garment_part=self.cfg.garment_part)
-            constraints = load_seam_constraints_from_dir(self.cfg.seam_dir, weights_by_filename={}, default_weight=1.0)
+            constraints = load_seam_constraints_from_dir(
+                self.cfg.seam_dir,
+                weights_by_filename=self._weights_by_filename(self.cfg.seam_dir),
+                default_weight=0.0,
+            )
             # center_by_boundary=True: vertices are shifted so the outer boundary
             # mean is at the origin, matching the PatchLoader / NestingItem frame.
             # This ensures Stage2 and f2 operate in the same coordinate system as
@@ -201,10 +222,8 @@ class RealEvaluator:
             penalty = 1e6 / self.cfg.fabric_width_mm  # normalised, same scale as f1_norm
             return Fitness(np.array([self.cfg.w1 * penalty, self.cfg.w2 * penalty, 0.0], dtype=float))
 
-        weighted_constraints = []
-        for i, c in enumerate(constraints):
-            imp = float(self.seam_importances[i]) if i < len(self.seam_importances) else 1.0
-            weighted_constraints.append(type(c)(c.patch_i, c.patch_j, c.pairs, imp, c.name))
+        # Importances already baked in via _weights_by_filename during load.
+        weighted_constraints = list(constraints)
 
         def _pid(it) -> int:
             m = re.search(r"patch_(\d+)", it.name)
@@ -299,9 +318,26 @@ class RealEvaluator:
         # Each body shares the same seam structure (same weighted_constraints and Tsol)
         # but may have different kappa/rho assignments.
         # f2 is averaged over bodies so it stays in [0, 0.5*num_seams] regardless of N.
+
+        # Absolute orientation penalty: any patch rotated 90°/270° produces vertical
+        # stripes on the garment regardless of seam alignment.  This penalty is added
+        # once per rotated patch and is strictly greater than the maximum f2 achievable
+        # by any unrotated configuration (= total_active_weight * 0.5), so the GA
+        # always strictly prefers non-rotated solutions over rotated ones.
+        total_active_weight = sum(c.weight for c in weighted_constraints)
+        abs_rot_penalty = total_active_weight * 0.5 + 0.01  # > max non-rotated f2
+
         f2_total = 0.0
         for b in range(N):
             f2_body = 0.0
+
+            # Per-patch absolute orientation penalty.
+            for item_idx in range(M):
+                genome_idx = b * M + item_idx
+                rho_val = int(g.rho[genome_idx]) % 4 if genome_idx < g.rho.size else 0
+                if rho_val % 2 != 0:
+                    f2_body += abs_rot_penalty
+
             for c in weighted_constraints:
                 Ti = Tsol.get(c.patch_i, Rigid2D(0, 0, 0))
                 Tj = Tsol.get(c.patch_j, Rigid2D(0, 0, 0))
@@ -320,9 +356,12 @@ class RealEvaluator:
                 seam_imp = c.weight
 
                 # Stripe-direction penalty: patches rotated by an odd multiple of 90°
-                # relative to each other produce perpendicular stripes at the seam.
+                # relative to each other produce perpendicular stripes at the seam —
+                # always wrong regardless of phase.  Penalty must be strictly greater
+                # than the maximum possible phase mismatch (seam_imp * 0.5) so the GA
+                # always prefers any aligned orientation over a 90° rotation.
                 if (rho_i % 2) != (rho_j % 2):
-                    f2_body += seam_imp * 0.5
+                    f2_body += seam_imp * 1.0
                     continue
 
                 Vi = _rho_rotate_verts(Ti.apply(V_centered_by_id[c.patch_i]), rho_i)

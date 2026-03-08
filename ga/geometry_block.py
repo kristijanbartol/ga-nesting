@@ -78,12 +78,26 @@ def run_geometry_blackbox(instance, mesh, delta_uv: np.ndarray, garment_part: st
     builder = BatchBuilder(instance)
     landmarks_batch = builder.build_batch(vertex_ids)
 
-    cut_mesh, patches, patch_faces, seamlines_dict_list, symmetric_flags, valid_patch_idxs = perform_global_cut(
+    cut_mesh, patches, patch_faces, seamlines_dict_list, symmetric_flags, valid_patch_idxs, seam_batch_indices = perform_global_cut(
         landmarks_batch, mesh.vertices, mesh.faces
     )
     patch_labels_dict = assign_patch_labels(
         patches, garment_part, valid_patch_idxs, mesh.vertices[SHOULDER_KPT_IDX]
     )
+
+    # Build batch position → seam name mapping so each seam file is named by its
+    # seam name rather than a sequential index.  Sequential indices shift when short
+    # seams are filtered out, causing importance weights to be applied to the wrong seam.
+    from spec import SeamPathType
+    batch_pos = 0
+    batch_pos_to_seam_name = {}
+    for i, seam_type in enumerate(instance.active_seam_types):
+        if seam_type == SeamPathType.GEODESIC:
+            batch_pos_to_seam_name[batch_pos] = instance.seam_names[i]
+            batch_pos += 1
+        else:  # DUAL: two paths per seam
+            batch_pos += 2
+    seam_names = [batch_pos_to_seam_name.get(bidx, f"unknown_{bidx}") for bidx in seam_batch_indices]
 
     export_data(
         patches,
@@ -92,7 +106,8 @@ def run_geometry_blackbox(instance, mesh, delta_uv: np.ndarray, garment_part: st
         seamlines_dict_list,
         symmetric_flags,
         patch_labels_dict,
-        cut_mesh
+        cut_mesh,
+        seam_names=seam_names,
     )
 
     # writes results/pattern/latest/{garment_part}/patch_*/optim_final-seams.ply
