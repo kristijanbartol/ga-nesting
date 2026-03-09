@@ -65,6 +65,18 @@
         },
 
         {
+            "name": "Visualization Simulation",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/visualize_simulation.py",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
+            },
+            "console": "integratedTerminal"
+        },
+
+        {
             "name": "Debug",
             "type": "debugpy",
             "request": "launch",

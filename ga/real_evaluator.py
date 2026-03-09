@@ -247,13 +247,29 @@ class RealEvaluator:
         )
         t_stage2 = time.time() - t0
 
+        # Store Stage2 outputs so the caller can produce seam analysis plots
+        # directly from this individual's data without any re-computation.
+        ind.meta["Tsol"] = Tsol
+        ind.meta["kappas_by_id"] = kappas_by_id
+        ind.meta["V_centered_by_id"] = V_centered_by_id
+        ind.meta["weighted_constraints"] = weighted_constraints
+
         # --- STEP 2: Build base items (Stage2 transforms applied once, shared across bodies) ---
         from copy import deepcopy
         from shapely.geometry import Polygon as _Polygon
 
-        loader = PatchLoader(self.cfg.latest_root, self.cfg.garment_part)
-        base_items = loader.load_items()
+        try:
+            loader = PatchLoader(self.cfg.latest_root, self.cfg.garment_part)
+            base_items = loader.load_items()
+        except Exception as e:
+            print(f"         [loader] FAILED: {e} -> penalty fitness")
+            penalty = 1e6 / self.cfg.fabric_width_mm
+            return Fitness(np.array([self.cfg.w1 * penalty, self.cfg.w2 * penalty, 0.0], dtype=float))
         base_items = sorted(base_items, key=_pid)
+        if len(base_items) != len(self.patch_ids):
+            print(f"         [loader] wrong patch count: got {len(base_items)}, expected {len(self.patch_ids)} -> penalty fitness")
+            penalty = 1e6 / self.cfg.fabric_width_mm
+            return Fitness(np.array([self.cfg.w1 * penalty, self.cfg.w2 * penalty, 0.0], dtype=float))
         num_base = len(base_items)
 
         # Apply Stage2 corrective transforms to base item geometry.
@@ -263,6 +279,10 @@ class RealEvaluator:
             it.original_vertices = T.apply(it.original_vertices)
             it.shape = _Polygon(it.original_vertices)
             it.current_rotation = 0.0
+
+        # Store Stage2-baked items so the caller can build alternative nestings
+        # (e.g. baseline kappa=0) from the exact same geometry without any disk I/O.
+        ind.meta["base_items"] = base_items
 
         # --- STEP 3: Clone base items N times, assign per-body kappa / rho ---
         # Genome layout: kappa[b*M : (b+1)*M] and rho[b*M : (b+1)*M] belong to body b.

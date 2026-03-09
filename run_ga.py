@@ -31,30 +31,26 @@ def apply_kappa_to_items(items, genome, K, texture, pid_to_item_idx):
         it.phase_offset = ((k / float(K)) * tx, (k / float(K)) * ty)
 
 
-def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome, K, title, garment_part, seam_importance_by_name=None):
+def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome, K, title, garment_part,
+                  seam_importance_by_name=None, num_bodies=1, show_layout=True):
     print(f"\n[nest_and_show] '{title}'  rho={genome.rho.tolist()}  kappa={genome.kappa.tolist()}")
     loader = PatchLoader(latest_root, garment_part)
-    items = loader.load_items()
+    base_items = loader.load_items()
 
     # Deterministic mapping patch_id <-> genome index
     import re
     def _pid(it):
         m = re.search(r"patch_(\d+)", it.name)
         return int(m.group(1)) if m else 10**9
-    items = sorted(items, key=_pid)
+    base_items = sorted(base_items, key=_pid)
 
     # Build pid -> item_idx mapping (do NOT use pid-1, patch IDs can be non-sequential).
-    patch_ids_local = [_pid(it) for it in items]
+    patch_ids_local = [_pid(it) for it in base_items]
     pid_to_item_idx = {pid: idx for idx, pid in enumerate(patch_ids_local)}
+    M = len(base_items)
 
-    # 1) Apply kappa -> phase_offset (snap lattice shift)
-    apply_kappa_to_items(items, genome, K, texture, pid_to_item_idx)
-
-    # 2) Stage2: compute transforms from seam constraints + kappas + weights
-    # Build weights_by_filename from seam name embedded in filename.
-    # This is robust to short seams (e.g. Shoulder_L/R) being filtered out by
-    # extract_seamlines, which would shift sequential indices and map importances
-    # to the wrong seams.
+    # 1) Stage2: compute transforms from seam constraints + kappas + weights.
+    # Stage2 operates on body-0's kappas; all bodies share the same geometry.
     import re as _re
     import os as _os
 
@@ -81,10 +77,10 @@ def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome,
         latest_root, garment_part=garment_part, scale_mm=1000.0, center_by_boundary=True)
     patch_ids = sorted(V_centered_by_id.keys())
 
+    # Use body-0 kappas for Stage2 (shared geometry across all bodies)
     kappas_by_id = {pid: int(genome.kappa[pid_to_item_idx[pid]]) for pid in patch_ids if pid in pid_to_item_idx}
 
     weighted_constraints = list(constraints)
-
     T0 = {pid: Rigid2D(0.0, 0.0, 0.0) for pid in patch_ids}
 
     Tsol = solve_global_alignment_all_components(
@@ -99,42 +95,49 @@ def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome,
         verbose=False
     )
 
-    # 3) Apply Stage2 transforms to the actual nested geometry
+    # 2) Bake Stage2 transforms into base items (shared across all bodies)
     from shapely.geometry import Polygon as _Polygon
-    for it in items:
+    from copy import deepcopy
+    for it in base_items:
         pid = _pid(it)
         if pid >= 10**9:
             continue
         T = Tsol.get(pid, Rigid2D(0, 0, 0))
         it.original_vertices = T.apply(it.original_vertices)
-        # Rebuild shape directly from Stage2-corrected vertices so that the
-        # subsequent rho rotation is applied from the correct base.
         it.shape = _Polygon(it.original_vertices)
         it.current_rotation = 0.0
 
-    # Apply discrete grain rotations (rho) after Stage2 bake (visualization only)
-    for it in items:
-        pid = _pid(it)
-        idx = pid_to_item_idx.get(pid)
-        if idx is None or idx >= genome.rho.size:
-            continue
-        rho_val = int(genome.rho[idx]) % 4
-        it.set_rotation(float(rho_val * 90))
+    # 3) Clone base items for each body, applying per-body kappa and rho
+    tx, ty = texture.period_x, texture.period_y
+    all_items = []
+    for b in range(num_bodies):
+        for item_idx, base_it in enumerate(base_items):
+            it = deepcopy(base_it)
+            it.name = f"body_{b}/{base_it.name}"
+            genome_idx = b * M + item_idx
 
-    # 4) Nest + visualize
+            rho_val = int(genome.rho[genome_idx]) % 4 if genome_idx < genome.rho.size else 0
+            it.set_rotation(float(rho_val * 90))
+
+            k = int(genome.kappa[genome_idx]) if genome_idx < genome.kappa.size else 0
+            it.phase_offset = ((k / float(K)) * tx, (k / float(K)) * ty)
+
+            all_items.append(it)
+
+    # 4) Nest all N*M items + visualize
     eng = NestingEngine(fabric_width=fabric_width, texture_spec=texture)
     pi = None
-    if genome.pi is not None and getattr(genome.pi, "size", 0) == len(items):
+    num_total = num_bodies * M
+    if genome.pi is not None and getattr(genome.pi, "size", 0) == num_total:
         pi = [int(x) for x in genome.pi.tolist()]
-    fabric = eng.nest(items, permutation=pi, heuristic=int(getattr(genome, "h", 0)))
+    fabric = eng.nest(all_items, permutation=pi, heuristic=int(getattr(genome, "h", 0)))
 
     print(f"{title}: height={fabric.total_height:.2f}")
-    visualize_layout(fabric, texture, title=title)
+    if show_layout:
+        visualize_layout(fabric, texture, title=title)
 
-    # Plot per-seam phase mismatch
+    # Plot per-seam phase mismatch (body-0 only — geometry is shared)
     from nesting.vis_utils import plot_seam_mismatch
-    import re
-    kappas_by_id = {pid: int(genome.kappa[pid_to_item_idx[pid]]) for pid in patch_ids if pid in pid_to_item_idx}
     plot_seam_mismatch(weighted_constraints, V_centered_by_id, lattice, kappas_by_id, K, Tsol, title)
 
     return Tsol, kappas_by_id
@@ -178,9 +181,9 @@ def main():
         period_v_mm=50.0,
         K=8,
         fabric_width_mm=150.0 * 10.0,
-        num_bodies=1,
-        w1=0,
-        w2=1
+        num_bodies=2,
+        w1=1,
+        w2=10
     )
     evaluator = RealEvaluator(eval_cfg)
 
@@ -196,7 +199,7 @@ def main():
         K=eval_cfg.K,
         num_landmarks=evaluator.instance.num_landmarks,
         num_bodies=eval_cfg.num_bodies,
-        fixed_rho=np.zeros(num_patches * eval_cfg.num_bodies, dtype=int),
+        fixed_rho=None,
         fixed_pi=None,
         fixed_h=None,
         num_heuristics=3,
@@ -205,7 +208,7 @@ def main():
     cfg = GAConfig(
         seed=0,
         population_size=50,
-        generations=10,
+        generations=2,
         elite_count=4,
         tournament_k=4,
         crossover_prob=0.7,
@@ -254,13 +257,64 @@ def main():
     best_root, best_seam_dir = save_best_individual_data(
         GARMENT_TYPE, eval_cfg.latest_root, "data/seamlines")
 
-    # Show baseline vs best NESTING (collision-free by construction)
-    nest_and_show(best_root, best_seam_dir, evaluator.lattice, evaluator.instance.texture,
-                eval_cfg.fabric_width_mm, base, eval_cfg.K, "BASELINE (kappa=0)", GARMENT_TYPE,
-                seam_importance_by_name=evaluator._seam_importance_by_name)
-    Tsol, kappas_by_id = nest_and_show(best_root, best_seam_dir, evaluator.lattice, evaluator.instance.texture,
-                eval_cfg.fabric_width_mm, best.genome, eval_cfg.K, "BEST (GA kappa)", GARMENT_TYPE,
-                seam_importance_by_name=evaluator._seam_importance_by_name)
+    from nesting.vis_utils import visualize_layout, plot_seam_mismatch
+    from nesting.stage2_global_align import solve_global_alignment_all_components
+
+    # ── BASELINE (kappa=0) ──────────────────────────────────────────────────
+    # Use the same stored patches as the best individual; only kappas differ.
+    patch_ids_best = sorted(best.meta["V_centered_by_id"].keys())
+    baseline_kappas = {pid: 0 for pid in patch_ids_best}
+    Tsol_base = solve_global_alignment_all_components(
+        patch_ids=patch_ids_best,
+        constraints=best.meta["weighted_constraints"],
+        patch_vertices_by_id=best.meta["V_centered_by_id"],
+        lattice=evaluator.lattice,
+        kappas_by_id=baseline_kappas,
+        K=eval_cfg.K,
+        initial_transforms={pid: Rigid2D(0.0, 0.0, 0.0) for pid in patch_ids_best},
+        max_iters=15,
+        verbose=False,
+    )
+    # Build baseline fabric_state from the stored Stage2-baked items — same
+    # geometry as the best individual, kappa=0, no disk I/O.
+    from copy import deepcopy
+    base_fabric_items = []
+    for b in range(eval_cfg.num_bodies):
+        for item_idx, base_it in enumerate(best.meta["base_items"]):
+            it = deepcopy(base_it)
+            it.name = f"body_{b}/{base_it.name}"
+            it.phase_offset = (0.0, 0.0)
+            it.set_rotation(0.0)
+            base_fabric_items.append(it)
+    base_engine = NestingEngine(fabric_width=eval_cfg.fabric_width_mm, texture_spec=evaluator.instance.texture)
+    baseline_fabric_state = base_engine.nest(base_fabric_items)
+    visualize_layout(baseline_fabric_state, evaluator.instance.texture, title="BASELINE (kappa=0)")
+    plot_seam_mismatch(
+        best.meta["weighted_constraints"],
+        best.meta["V_centered_by_id"],
+        evaluator.lattice,
+        baseline_kappas,
+        eval_cfg.K,
+        Tsol_base,
+        "BASELINE (kappa=0)",
+    )
+
+    # ── BEST (GA kappa) ─────────────────────────────────────────────────────
+    # Both nesting layout and seam analysis come from stored evaluation data —
+    # guaranteed to be the same individual as the population top-left thumbnail.
+    visualize_layout(best.meta["fabric_state"], evaluator.instance.texture, title="BEST (GA kappa)")
+    plot_seam_mismatch(
+        best.meta["weighted_constraints"],
+        best.meta["V_centered_by_id"],
+        evaluator.lattice,
+        best.meta["kappas_by_id"],
+        eval_cfg.K,
+        best.meta["Tsol"],
+        "BEST (GA kappa)",
+    )
+
+    Tsol = best.meta["Tsol"]
+    kappas_by_id = best.meta["kappas_by_id"]
 
     # Run cloth simulation for the best individual, passing nesting UV transforms
     print("\n[main] Running cloth simulation for best individual...")

@@ -6,7 +6,8 @@ from matplotlib.path import Path
 from matplotlib.patches import PathPatch
 from nesting.phase_utils import phase_uv, frac, Rigid2D
 
-PATCH_COLORS = ['#4C9BE8', '#F0A500', '#5DBB63', '#E85C5C', '#A06FD0', '#4ECDC4']
+PATCH_COLORS = ['#4C9BE8', '#F0A500', '#5DBB63', '#E85C5C', '#A06FD0', '#4ECDC4',
+                '#1A6BBF', '#C07800', '#2E8B3C', '#B03030', '#6B3A9E', '#2A9D8F']
 
 
 def _polygon_to_path(poly) -> Path:
