@@ -1,5 +1,6 @@
 # visualize_ga_effect.py
-import numpy as np
+import json
+import os
 from copy import deepcopy
 
 from ga_spec import GAInstance, GAConfig, run_ga
@@ -12,6 +13,17 @@ from nesting.phase_utils import Rigid2D
 from nesting.stage2_global_align import solve_global_alignment_all_components
 from nesting.stage2_global_align import load_seam_constraints_from_dir
 from ga.real_evaluator import load_patch_vertices_full_from_latest
+
+
+# TODO:
+#   - Other symmetry groups (see Wolff et al. for reference)
+#   - More suitable baseline (faster, simpler)
+#   - 
+
+# BASELINES
+#   - baseline 1:
+#       - mean seam locations (within the boundaries)
+#       - bounding boxes next to each other (with phase alignment)
 
 
 
@@ -32,7 +44,8 @@ def apply_kappa_to_items(items, genome, K, texture, pid_to_item_idx):
 
 
 def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome, K, title, garment_part,
-                  seam_importance_by_name=None, num_bodies=1, show_layout=True):
+                  seam_importance_by_name=None, num_bodies=1, show_layout=True,
+                  precomputed_tsol=None, precomputed_kappas_by_id=None):
     print(f"\n[nest_and_show] '{title}'  rho={genome.rho.tolist()}  kappa={genome.kappa.tolist()}")
     loader = PatchLoader(latest_root, garment_part)
     base_items = loader.load_items()
@@ -78,22 +91,26 @@ def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome,
     patch_ids = sorted(V_centered_by_id.keys())
 
     # Use body-0 kappas for Stage2 (shared geometry across all bodies)
-    kappas_by_id = {pid: int(genome.kappa[pid_to_item_idx[pid]]) for pid in patch_ids if pid in pid_to_item_idx}
+    kappas_by_id = (precomputed_kappas_by_id if precomputed_kappas_by_id is not None
+                    else {pid: int(genome.kappa[pid_to_item_idx[pid]]) for pid in patch_ids if pid in pid_to_item_idx})
 
     weighted_constraints = list(constraints)
-    T0 = {pid: Rigid2D(0.0, 0.0, 0.0) for pid in patch_ids}
 
-    Tsol = solve_global_alignment_all_components(
-        patch_ids=patch_ids,
-        constraints=weighted_constraints,
-        patch_vertices_by_id=V_centered_by_id,
-        lattice=lattice,
-        kappas_by_id=kappas_by_id,
-        K=K,
-        initial_transforms=T0,
-        max_iters=15,
-        verbose=False
-    )
+    if precomputed_tsol is not None:
+        Tsol = precomputed_tsol
+    else:
+        T0 = {pid: Rigid2D(0.0, 0.0, 0.0) for pid in patch_ids}
+        Tsol = solve_global_alignment_all_components(
+            patch_ids=patch_ids,
+            constraints=weighted_constraints,
+            patch_vertices_by_id=V_centered_by_id,
+            lattice=lattice,
+            kappas_by_id=kappas_by_id,
+            K=K,
+            initial_transforms=T0,
+            max_iters=15,
+            verbose=False
+        )
 
     # 2) Bake Stage2 transforms into base items (shared across all bodies)
     from shapely.geometry import Polygon as _Polygon
@@ -143,31 +160,52 @@ def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome,
     return Tsol, kappas_by_id
 
 
-def save_best_individual_data(garment_type: str,
+def save_best_individual_data(best_ind,
+                               garment_type: str,
                                latest_root: str = "results/pattern/latest",
-                               seam_dir_base: str = "data/seamlines") -> tuple:
+                               seam_dir_base: str = "data/seamlines",
+                               patches_3d_dir_base: str = "data/patches") -> tuple:
     """
-    Copy patch geometry and seam files from latest/ to a stable best/ directory.
-    Returns (best_root, best_seam_dir) for use in visualization.
+    Write the best individual's patch geometry and seam files directly from
+    ind.meta (snapshotted during evaluation) to stable best/ directories.
+    This avoids re-running the non-deterministic C++ geometry pipeline, ensuring
+    the saved patches are identical to what was used during evaluation.
+    Returns (best_root, best_seam_dir, best_patches_3d_dir).
     """
     import shutil, os
+    import trimesh as _trimesh
 
     best_root = os.path.join(os.path.dirname(latest_root), "best")
 
-    src_patches = os.path.join(latest_root, garment_type)
-    dst_patches = os.path.join(best_root, garment_type)
-    if os.path.exists(dst_patches):
-        shutil.rmtree(dst_patches)
-    shutil.copytree(src_patches, dst_patches)
+    # Write 2D patches (optim_final-seams.ply) from stored meta
+    dst_2d = os.path.join(best_root, garment_type)
+    if os.path.exists(dst_2d):
+        shutil.rmtree(dst_2d)
+    for dname, (verts, faces) in best_ind.meta["patches_2d_raw"].items():
+        out_dir = os.path.join(dst_2d, dname)
+        os.makedirs(out_dir, exist_ok=True)
+        m = _trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+        m.export(os.path.join(out_dir, 'optim_final-seams.ply'))
 
+    # Copy seam constraint files (deterministic text files, safe to copy from disk)
     src_seams = os.path.join(seam_dir_base, garment_type)
     dst_seams = os.path.join(seam_dir_base, "best", garment_type)
     if os.path.exists(dst_seams):
         shutil.rmtree(dst_seams)
     shutil.copytree(src_seams, dst_seams)
 
-    print(f"[main] Best individual data saved to '{dst_patches}' and '{dst_seams}'")
-    return best_root, dst_seams
+    # Write 3D patches from stored meta
+    dst_3d = os.path.join(patches_3d_dir_base, "best", garment_type)
+    if os.path.exists(dst_3d):
+        shutil.rmtree(dst_3d)
+    for dname, (verts, faces, fname) in best_ind.meta["patches_3d_raw"].items():
+        out_dir = os.path.join(dst_3d, dname)
+        os.makedirs(out_dir, exist_ok=True)
+        m = _trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+        m.export(os.path.join(out_dir, fname))
+
+    print(f"[main] Best individual data saved to '{dst_2d}', '{dst_seams}', '{dst_3d}'")
+    return best_root, dst_seams, dst_3d
 
 
 def main():
@@ -183,7 +221,7 @@ def main():
         fabric_width_mm=150.0 * 10.0,
         num_bodies=2,
         w1=1,
-        w2=10
+        w2=50
     )
     evaluator = RealEvaluator(eval_cfg)
 
@@ -208,7 +246,7 @@ def main():
     cfg = GAConfig(
         seed=0,
         population_size=50,
-        generations=2,
+        generations=5,
         elite_count=4,
         tournament_k=4,
         crossover_prob=0.7,
@@ -243,19 +281,38 @@ def main():
     base = deepcopy(best.genome)
     base.kappa[:] = 0
 
-    # The geometry pipeline overwrites results/pattern/latest/ on every evaluation,
-    # so after the GA the patches on disk belong to the LAST evaluated individual —
-    # not the best.  Regenerate the best individual's patches before visualizing,
-    # then snapshot them to results/pattern/best/ so subsequent runs can't corrupt
-    # the visualization data.
-    print("\n[main] Regenerating patches for best individual...")
-    from ga.geometry_block import run_geometry_blackbox_timeout
-    run_geometry_blackbox_timeout(
-        evaluator.instance, evaluator.mesh, best.genome.delta,
-        garment_part=GARMENT_TYPE)
+    # Write the best individual's patches directly from ind.meta (snapshotted during
+    # evaluation) — no geometry re-run needed, so there is no risk of the
+    # non-deterministic C++ pipeline producing different patches.
+    print("\n[main] Saving best individual patches from evaluation snapshot...")
+    best_root, best_seam_dir, best_patches_3d_dir = save_best_individual_data(
+        best, GARMENT_TYPE, eval_cfg.latest_root, "data/seamlines")
 
-    best_root, best_seam_dir = save_best_individual_data(
-        GARMENT_TYPE, eval_cfg.latest_root, "data/seamlines")
+    best_genome_path = os.path.join(best_root, "best_individual.json")
+    _Tsol = best.meta["Tsol"]
+    _kappas = best.meta["kappas_by_id"]
+    with open(best_genome_path, 'w') as _f:
+        json.dump({
+            "kappa":          best.genome.kappa.tolist(),
+            "rho":            best.genome.rho.tolist(),
+            "delta":          best.genome.delta.tolist(),
+            "pi":             best.genome.pi.tolist(),
+            "h":              int(best.genome.h),
+            "K":              eval_cfg.K,
+            "period_u_mm":    eval_cfg.period_u_mm,
+            "period_v_mm":    eval_cfg.period_v_mm,
+            "fabric_width_mm": eval_cfg.fabric_width_mm,
+            "garment_part":   GARMENT_TYPE,
+            "num_bodies":     eval_cfg.num_bodies,
+            "best_root":      best_root,
+            "best_seam_dir":  best_seam_dir,
+            "best_patches_3d_dir": best_patches_3d_dir,
+            "Tsol":           {str(pid): [T.theta, T.tx, T.ty]
+                               for pid, T in _Tsol.items()},
+            "kappas_by_id":   {str(pid): int(k)
+                               for pid, k in _kappas.items()},
+        }, _f, indent=2)
+    print(f"[main] Best individual genome saved to '{best_genome_path}'")
 
     from nesting.vis_utils import visualize_layout, plot_seam_mismatch
     from nesting.stage2_global_align import solve_global_alignment_all_components
@@ -277,7 +334,6 @@ def main():
     )
     # Build baseline fabric_state from the stored Stage2-baked items — same
     # geometry as the best individual, kappa=0, no disk I/O.
-    from copy import deepcopy
     base_fabric_items = []
     for b in range(eval_cfg.num_bodies):
         for item_idx, base_it in enumerate(best.meta["base_items"]):
@@ -326,6 +382,8 @@ def main():
         K=eval_cfg.K,
         period_u_mm=eval_cfg.period_u_mm,
         period_v_mm=eval_cfg.period_v_mm,
+        pattern_root=best_root,
+        patches_dir=best_patches_3d_dir,
     )
 
 

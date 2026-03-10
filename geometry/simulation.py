@@ -23,8 +23,7 @@ PANTS = False
 HORSE = False
 
 
-def read_patches(is_adapt=False):
-    patches_dir = f'data/patches/upper/'
+def read_patches(is_adapt=False, patches_dir='data/patches/upper'):
     patch_meshes = []
     for patch_dirname in sorted(os.listdir(patches_dir)):
         patch_dir = f'{patches_dir}/{patch_dirname}/'
@@ -59,14 +58,14 @@ def _outer_boundary_centroid_mm(mesh):
     return V2[outer].mean(axis=0)
 
 
-def read_sewing_pattern():
+def read_sewing_pattern(pattern_root: str = 'results/pattern/latest'):
     """Returns the merged 2D simulation mesh and patch_info list.
 
     patch_info: list of (patch_id, vertex_start, vertex_end, was_y_flipped, boundary_centroid_mm)
       - vertex ranges index into the merged UV array
       - boundary_centroid_mm matches the Stage2 solver's centering convention
     """
-    param_2d_dir = os.path.join(f'results/pattern/latest/upper/')
+    param_2d_dir = os.path.join(pattern_root, 'upper')
     back_idxs = read_back_idxs()
     patch_2d_meshes = []
     patch_info = []
@@ -144,7 +143,9 @@ class Example:
 
     def __init__(self, viewer, avatar, is_adapt=False,
                  tsol=None, kappas_by_id=None, K=None,
-                 period_u_mm=None, period_v_mm=None):
+                 period_u_mm=None, period_v_mm=None,
+                 pattern_root='results/pattern/latest',
+                 patches_dir='data/patches/upper'):
         # setup simulation parameters first
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
@@ -162,8 +163,8 @@ class Example:
         #self.scale = 10     # scale up to improve simulation result
         self.scale = 5     # scale up to improve simulation result
 
-        garment_mesh_3d, garment_mesh_3d_unmerged = read_patches(is_adapt)
-        garment_mesh_2d, patch_info = read_sewing_pattern()
+        garment_mesh_3d, garment_mesh_3d_unmerged = read_patches(is_adapt, patches_dir=patches_dir)
+        garment_mesh_2d, patch_info = read_sewing_pattern(pattern_root)
 
         if PANTS:
             rim_idxs = extract_upper_rim(garment_mesh_3d.vertices, garment_mesh_3d.faces)
@@ -412,11 +413,15 @@ def run_simulation(avatar):
 
 def run_headless_simulation(avatar, is_adapt=False,
                              tsol=None, kappas_by_id=None, K=None,
-                             period_u_mm=None, period_v_mm=None):
+                             period_u_mm=None, period_v_mm=None,
+                             pattern_root='results/pattern/latest',
+                             patches_dir='data/patches/upper'):
     viewer = HeadlessViewer()
     example = Example(viewer, avatar, is_adapt,
                       tsol=tsol, kappas_by_id=kappas_by_id, K=K,
-                      period_u_mm=period_u_mm, period_v_mm=period_v_mm)
+                      period_u_mm=period_u_mm, period_v_mm=period_v_mm,
+                      pattern_root=pattern_root,
+                      patches_dir=patches_dir)
 
     # run headless for some number of frames
     num_frames = 60  # 1 secons @ 60 fps

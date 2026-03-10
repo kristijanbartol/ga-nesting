@@ -207,6 +207,31 @@ class RealEvaluator:
             patch_ids = sorted(V_centered_by_id.keys())
             t_geo = time.time() - t0
 
+            # Snapshot raw patch files from disk into ind.meta so the best
+            # individual's exact geometry can be written to best/ later without
+            # re-running the non-deterministic C++ pipeline.
+            patches_2d_raw = {}
+            param_dir = os.path.join(self.cfg.latest_root, self.cfg.garment_part)
+            for dname in sorted(os.listdir(param_dir)):
+                seams_ply = os.path.join(param_dir, dname, 'optim_final-seams.ply')
+                if os.path.exists(seams_ply):
+                    m = trimesh.load(seams_ply, process=False)
+                    patches_2d_raw[dname] = (np.array(m.vertices), np.array(m.faces))
+            ind.meta["patches_2d_raw"] = patches_2d_raw
+
+            patches_3d_raw = {}
+            patches_3d_dir = f"data/patches/{self.cfg.garment_part}"
+            if os.path.isdir(patches_3d_dir):
+                for dname in sorted(os.listdir(patches_3d_dir)):
+                    dpath = os.path.join(patches_3d_dir, dname)
+                    if not os.path.isdir(dpath):
+                        continue
+                    ply_files = [f for f in os.listdir(dpath) if f.endswith('.ply')]
+                    if ply_files:
+                        m = trimesh.load(os.path.join(dpath, ply_files[0]), process=False)
+                        patches_3d_raw[dname] = (np.array(m.vertices), np.array(m.faces), ply_files[0])
+            ind.meta["patches_3d_raw"] = patches_3d_raw
+
             # Map patch_id -> item_idx (rank in sorted patch_ids).
             # IMPORTANT: do NOT use (pid - 1) as the index — patch IDs can be
             # non-sequential (e.g., [1, 2, 3, 5] when patch_04 is absent).
