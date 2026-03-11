@@ -1,23 +1,6 @@
 from spec import LandmarkDefinition
 
 
-# TODOs:
-#  - move seamline definitions (`topologies.py`) to geometry/
-#  - test all garment types (sleeveless shirt, long shirt, short shirt, pants, shorts, dress, onesie)
-#  - add onesie definition(s)
-#  - add more than one seamline definition per garment type (for example, split in the middle / jacket style) + cut in the middle back
-#  - add complicated onesie definition (teaser?)
-
-#  - adjust flattening hyperparameters as part of the GA (more parameters!!)
-
-#  - add more texture pattern types (start with stripes and grid)
-#  - visualize in the simulation in 3D
-#  - include fit loss component (read from the resulting scales and evaluate using existing utils)
-
-# OPTIONAL / EXPERIMENTS:
-#  - more complex pattern symmetries
-
-
 CORE_LANDMARKS = {
     "Upper": {
         "Neck": LandmarkDefinition(

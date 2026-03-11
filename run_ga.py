@@ -17,13 +17,9 @@ from ga.real_evaluator import load_patch_vertices_full_from_latest
 
 # TODO:
 #   - Other symmetry groups (see Wolff et al. for reference)
-#   - More suitable baseline (faster, simpler)
-#   - 
-
-# BASELINES
-#   - baseline 1:
-#       - mean seam locations (within the boundaries)
-#       - bounding boxes next to each other (with phase alignment)
+#   - Add fit loss component + include parameterization parameters into GA
+#   - Add onesie (and dress)
+#   - Write paper
 
 
 
@@ -221,7 +217,7 @@ def main():
         fabric_width_mm=150.0 * 10.0,
         num_bodies=2,
         w1=1,
-        w2=50
+        w2=0
     )
     evaluator = RealEvaluator(eval_cfg)
 
@@ -246,7 +242,7 @@ def main():
     cfg = GAConfig(
         seed=0,
         population_size=50,
-        generations=5,
+        generations=1,
         elite_count=4,
         tournament_k=4,
         crossover_prob=0.7,
