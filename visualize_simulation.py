@@ -17,7 +17,7 @@ import polyscope as ps
 # ── Config ──────────────────────────────────────────────────────────────────
 PERIOD_U_MM    = 50.0
 PERIOD_V_MM    = 50.0
-WALLPAPER_GROUP = "stripes"   # "stripes" | "grid"
+WALLPAPER_GROUP = "diagonal_stripes"   # "stripes" | "diagonal_stripes" | "grid"
 PLY_PATH      = "results/simulation/upper/cloth_00000.ply"
 PARAM_DIR     = "results/pattern/best/upper"
 PATCHES_3D_DIR = "data/patches/best/upper"
@@ -47,10 +47,15 @@ def _texture_value(uv_mm: np.ndarray,
     """
     Per-vertex texture scalar in [0, 1].
 
-    stripes: varies along v only  — 0.5 + 0.5·cos(2π·v/T_v)
-    grid:    product of both axes — (0.5 + 0.5·cos(2π·u/T_u))
-                                  · (0.5 + 0.5·cos(2π·v/T_v))
+    stripes:          0.5 + 0.5·cos(2π·v/T_v)
+    diagonal_stripes: 0.5 + 0.5·cos(2π·(v-u) / (T_v·√2))
+                      — v-axis is [-1,1]/√2, so phase = (-u+v)/(√2·T_v)
+    grid:             (0.5 + 0.5·cos(2π·u/T_u)) · (0.5 + 0.5·cos(2π·v/T_v))
     """
+    if wallpaper_group == 'diagonal_stripes':
+        return 0.5 + 0.5 * np.cos(
+            2.0 * np.pi * (uv_mm[:, 1] - uv_mm[:, 0]) / (period_v_mm * np.sqrt(2.0))
+        )
     t_v = 0.5 + 0.5 * np.cos(2.0 * np.pi * uv_mm[:, 1] / period_v_mm)
     if wallpaper_group == 'grid':
         t_u = 0.5 + 0.5 * np.cos(2.0 * np.pi * uv_mm[:, 0] / period_u_mm)
@@ -223,7 +228,7 @@ def visualize(ply_path: str = PLY_PATH,
 def parse_args():
     import argparse
     p = argparse.ArgumentParser(description="Visualize simulated garment texture.")
-    p.add_argument("--wallpaper", default=WALLPAPER_GROUP, choices=["stripes", "grid"],
+    p.add_argument("--wallpaper", default=WALLPAPER_GROUP, choices=["stripes", "diagonal_stripes", "grid"],
                    help="Texture wallpaper group (default: stripes)")
     p.add_argument("--ply", default=PLY_PATH,
                    help="Path to simulated garment PLY (default: %(default)s)")

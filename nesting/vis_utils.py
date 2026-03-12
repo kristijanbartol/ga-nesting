@@ -39,12 +39,37 @@ def _draw_texture_vlines_in_patch(ax, poly, phase_offset_x, period_x, color, lw=
         x += period_x
 
 
+def _draw_texture_diaglines_in_patch(ax, poly, phase_offset, period, color, lw=1.0, alpha=0.6):
+    """
+    Draw 45° diagonal lines (y = x + c) clipped to poly.
+
+    The v-axis of the diagonal lattice is [-1,1]/√2, so lines of constant
+    v-phase satisfy (-x+y)/√2 = n·period, i.e. y-x = n·period·√2.
+    The spacing between consecutive lines in the (y-x) domain is period·√2.
+    """
+    minx, miny, maxx, maxy = poly.bounds
+    clip_path = PathPatch(_polygon_to_path(poly), transform=ax.transData)
+    spacing = period * np.sqrt(2.0)
+    yx_min = miny - maxx   # minimum value of (y-x) in the bounding box
+    yx_max = maxy - minx   # maximum value of (y-x) in the bounding box
+    c = yx_min - ((yx_min - phase_offset) % spacing)
+    while c <= yx_max + spacing:
+        line, = ax.plot([minx - 1, maxx + 1], [minx + c - 1, maxx + c + 1],
+                        color=color, lw=lw, alpha=alpha, zorder=4)
+        line.set_clip_path(clip_path)
+        c += spacing
+
+
 def _draw_texture_in_patch(ax, poly, texture_spec, color, lw=1.0, alpha=0.6):
     """Dispatch texture line drawing based on wallpaper group."""
     group = getattr(texture_spec, 'wallpaper_group', 'stripes')
-    _draw_texture_hlines_in_patch(ax, poly, 0.0, texture_spec.period_y, color, lw, alpha)
-    if group == 'grid':
+    if group == 'diagonal_stripes':
+        _draw_texture_diaglines_in_patch(ax, poly, 0.0, texture_spec.period_y, color, lw, alpha)
+    elif group == 'grid':
+        _draw_texture_hlines_in_patch(ax, poly, 0.0, texture_spec.period_y, color, lw, alpha)
         _draw_texture_vlines_in_patch(ax, poly, 0.0, texture_spec.period_x, color, lw, alpha)
+    else:  # 'stripes' and future 2-fold rectangular groups
+        _draw_texture_hlines_in_patch(ax, poly, 0.0, texture_spec.period_y, color, lw, alpha)
 
 
 def visualize_layout(fabric_state, texture_spec, title=None):

@@ -59,9 +59,9 @@
             "program": "${workspaceFolder}/run_ga.py",
             "args": [
                 "--garment", "upper",
-                "--wallpaper", "grid",
-                "--pop", "50",
-                "--gens", "5",
+                "--wallpaper", "diagonal_stripes",
+                "--pop", "10",
+                "--gens", "1",
                 "--seed", "0",
                 "--w1", "1.0",
                 "--w2", "10.0"
@@ -103,7 +103,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/visualize_simulation.py",
             "args": [
-                "--wallpaper", "grid",
+                "--wallpaper", "diagonal_stripes",
                 "--period", "50.0"
             ],
             "cwd": "${workspaceFolder}",

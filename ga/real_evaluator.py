@@ -157,10 +157,12 @@ class RealEvaluator:
         self.V_full_by_id = load_patch_vertices_full_from_latest(cfg.latest_root, garment_part=cfg.garment_part, scale_mm=1000.0)
         self.patch_ids = sorted(self.V_full_by_id.keys())
 
-        # 6) Texture lattice
+        # 6) Texture lattice — axis directions come from the policy so rotated
+        #    groups (e.g. diagonal_stripes) get the correct lattice geometry.
+        u_dir, v_dir = self.policy.lattice_directions()
         self.lattice = TextureLattice(
-            u_dir=np.array([1.0, 0.0]),
-            v_dir=np.array([0.0, 1.0]),
+            u_dir=u_dir,
+            v_dir=v_dir,
             period_u=cfg.period_u_mm,
             period_v=cfg.period_v_mm
         )

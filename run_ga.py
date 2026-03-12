@@ -210,7 +210,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="Run GA-Nesting optimisation.")
     p.add_argument("--garment", default="upper", choices=["upper", "lower"],
                    help="Garment type (default: upper)")
-    p.add_argument("--wallpaper", default="stripes", choices=["stripes", "grid"],
+    p.add_argument("--wallpaper", default="stripes", choices=["stripes", "diagonal_stripes", "grid"],
                    help="Texture wallpaper group (default: stripes)")
     p.add_argument("--pop", type=int, default=50,
                    help="Population size (default: 50)")
