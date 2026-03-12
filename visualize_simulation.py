@@ -49,18 +49,35 @@ def _texture_value(uv_mm: np.ndarray,
 
     stripes:          0.5 + 0.5·cos(2π·v/T_v)
     diagonal_stripes: 0.5 + 0.5·cos(2π·(v-u) / (T_v·√2))
-                      — v-axis is [-1,1]/√2, so phase = (-u+v)/(√2·T_v)
-    grid:             (0.5 + 0.5·cos(2π·u/T_u)) · (0.5 + 0.5·cos(2π·v/T_v))
+    grid:             (0.5 + 0.5·cos_u) · (0.5 + 0.5·cos_v)
+    p4:               0.5 + 0.5·sin(4·θ)  — pinwheel per cell, θ=arctan2(v_frac, u_frac)
+    p4m:              clip(1 - r/0.32, 0, 1)  — polka dots, r = dist to nearest lattice pt
     """
     if wallpaper_group == 'diagonal_stripes':
         return 0.5 + 0.5 * np.cos(
             2.0 * np.pi * (uv_mm[:, 1] - uv_mm[:, 0]) / (period_v_mm * np.sqrt(2.0))
         )
-    t_v = 0.5 + 0.5 * np.cos(2.0 * np.pi * uv_mm[:, 1] / period_v_mm)
     if wallpaper_group == 'grid':
-        t_u = 0.5 + 0.5 * np.cos(2.0 * np.pi * uv_mm[:, 0] / period_u_mm)
-        return t_u * t_v
-    return t_v
+        cos_u = np.cos(2.0 * np.pi * uv_mm[:, 0] / period_u_mm)
+        cos_v = np.cos(2.0 * np.pi * uv_mm[:, 1] / period_v_mm)
+        return (0.5 + 0.5 * cos_u) * (0.5 + 0.5 * cos_v)
+    if wallpaper_group == 'p4':
+        # Pinwheel: sin(4·θ) within each cell has 4-fold rotation but no mirror
+        # symmetry — correctly represents P4.  θ is the angle from the cell centre.
+        u_frac = (uv_mm[:, 0] % period_u_mm) / period_u_mm - 0.5   # [-0.5, 0.5)
+        v_frac = (uv_mm[:, 1] % period_v_mm) / period_v_mm - 0.5
+        angle = np.arctan2(v_frac, u_frac)
+        return 0.5 + 0.5 * np.sin(4.0 * angle)
+    if wallpaper_group == 'p4m':
+        # Polka dots: linear falloff from each lattice point; bright circle on
+        # dark background.  dot_radius=0.32 gives ~64% coverage per cell.
+        u_frac = (uv_mm[:, 0] % period_u_mm) / period_u_mm
+        v_frac = (uv_mm[:, 1] % period_v_mm) / period_v_mm
+        du = u_frac - np.round(u_frac)
+        dv = v_frac - np.round(v_frac)
+        r = np.sqrt(du ** 2 + dv ** 2)
+        return np.clip(1.0 - r / 0.32, 0.0, 1.0)
+    return 0.5 + 0.5 * np.cos(2.0 * np.pi * uv_mm[:, 1] / period_v_mm)
 
 
 def texture_colors(uv_mm: np.ndarray,
@@ -228,7 +245,7 @@ def visualize(ply_path: str = PLY_PATH,
 def parse_args():
     import argparse
     p = argparse.ArgumentParser(description="Visualize simulated garment texture.")
-    p.add_argument("--wallpaper", default=WALLPAPER_GROUP, choices=["stripes", "diagonal_stripes", "grid"],
+    p.add_argument("--wallpaper", default=WALLPAPER_GROUP, choices=["stripes", "diagonal_stripes", "grid", "p4", "p4m"],
                    help="Texture wallpaper group (default: stripes)")
     p.add_argument("--ply", default=PLY_PATH,
                    help="Path to simulated garment PLY (default: %(default)s)")

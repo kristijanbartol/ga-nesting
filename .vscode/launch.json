@@ -59,7 +59,7 @@
             "program": "${workspaceFolder}/run_ga.py",
             "args": [
                 "--garment", "upper",
-                "--wallpaper", "diagonal_stripes",
+                "--wallpaper", "p4m",
                 "--pop", "10",
                 "--gens", "1",
                 "--seed", "0",
@@ -98,12 +98,12 @@
         },
 
         {
-            "name": "Visualization Simulation",
+            "name": "Visualize Simulation",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/visualize_simulation.py",
             "args": [
-                "--wallpaper", "diagonal_stripes",
+                "--wallpaper", "p4m",
                 "--period", "50.0"
             ],
             "cwd": "${workspaceFolder}",

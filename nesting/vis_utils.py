@@ -60,6 +60,47 @@ def _draw_texture_diaglines_in_patch(ax, poly, phase_offset, period, color, lw=1
         c += spacing
 
 
+def _draw_texture_antidiaglines_in_patch(ax, poly, phase_offset, period, color, lw=1.0, alpha=0.6):
+    """
+    Draw 135° anti-diagonal lines (y = -x + c) clipped to poly.
+
+    Lines of constant (x+y)/√2 = n·period, i.e. y+x = n·period·√2.
+    The spacing between consecutive lines in the (y+x) domain is period·√2.
+    """
+    minx, miny, maxx, maxy = poly.bounds
+    clip_path = PathPatch(_polygon_to_path(poly), transform=ax.transData)
+    spacing = period * np.sqrt(2.0)
+    yx_min = miny + minx   # minimum value of (y+x) in the bounding box
+    yx_max = maxy + maxx   # maximum value of (y+x) in the bounding box
+    c = yx_min - ((yx_min - phase_offset) % spacing)
+    while c <= yx_max + spacing:
+        line, = ax.plot([minx - 1, maxx + 1], [c - (minx - 1), c - (maxx + 1)],
+                        color=color, lw=lw, alpha=alpha, zorder=4)
+        line.set_clip_path(clip_path)
+        c += spacing
+
+
+def _draw_texture_dots_in_patch(ax, poly, period_x, period_y, color, alpha=0.7):
+    """
+    Draw polka dots (filled circles) at lattice points, clipped to poly.
+    Dot radius is 28% of the period, giving clear separation between dots.
+    """
+    minx, miny, maxx, maxy = poly.bounds
+    clip_path = PathPatch(_polygon_to_path(poly), transform=ax.transData)
+    radius = min(period_x, period_y) * 0.28
+    x0 = np.floor(minx / period_x) * period_x
+    y0 = np.floor(miny / period_y) * period_y
+    x = x0
+    while x <= maxx + period_x:
+        y = y0
+        while y <= maxy + period_y:
+            dot = mpatches.Circle((x, y), radius, color=color, alpha=alpha, zorder=4)
+            ax.add_patch(dot)
+            dot.set_clip_path(clip_path)
+            y += period_y
+        x += period_x
+
+
 def _draw_texture_in_patch(ax, poly, texture_spec, color, lw=1.0, alpha=0.6):
     """Dispatch texture line drawing based on wallpaper group."""
     group = getattr(texture_spec, 'wallpaper_group', 'stripes')
@@ -68,6 +109,14 @@ def _draw_texture_in_patch(ax, poly, texture_spec, color, lw=1.0, alpha=0.6):
     elif group == 'grid':
         _draw_texture_hlines_in_patch(ax, poly, 0.0, texture_spec.period_y, color, lw, alpha)
         _draw_texture_vlines_in_patch(ax, poly, 0.0, texture_spec.period_x, color, lw, alpha)
+    elif group == 'p4':
+        # All four directions (H + V + both diagonals) suggest 4-fold rotational symmetry.
+        _draw_texture_hlines_in_patch(ax, poly, 0.0, texture_spec.period_y, color, lw * 0.7, alpha * 0.7)
+        _draw_texture_vlines_in_patch(ax, poly, 0.0, texture_spec.period_x, color, lw * 0.7, alpha * 0.7)
+        _draw_texture_diaglines_in_patch(ax, poly, 0.0, texture_spec.period_y, color, lw * 0.7, alpha * 0.7)
+        _draw_texture_antidiaglines_in_patch(ax, poly, 0.0, texture_spec.period_y, color, lw * 0.7, alpha * 0.7)
+    elif group == 'p4m':
+        _draw_texture_dots_in_patch(ax, poly, texture_spec.period_x, texture_spec.period_y, color, alpha)
     else:  # 'stripes' and future 2-fold rectangular groups
         _draw_texture_hlines_in_patch(ax, poly, 0.0, texture_spec.period_y, color, lw, alpha)
 

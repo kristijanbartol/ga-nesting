@@ -78,6 +78,8 @@ POLICIES: dict[str, WallpaperPolicy] = {
     "stripes":          StripesPolicy(),
     "diagonal_stripes": DiagonalStripesPolicy(),
     "grid":             GridPolicy(),
+    "p4":               GridPolicy(),   # 4-fold rotation, no mirrors — same seam math as grid
+    "p4m":              GridPolicy(),   # 4-fold + mirrors (polka dots) — same seam math as grid
 }
 
 
