@@ -41,6 +41,9 @@ def build_instance(
     mesh_path: str = "data/SMPL_FEMALE_POSED.ply",
     fabric_width: float = 150.0,
     garment_type: str = "lower",
+    wallpaper_group: str = "stripes",
+    period_u: float = 50.0,
+    period_v: float = 50.0,
 ):
     if garment_type not in _GARMENT_CONFIGS:
         raise ValueError(f"Unknown garment_type '{garment_type}'. Known: {list(_GARMENT_CONFIGS)}")
@@ -50,7 +53,7 @@ def build_instance(
     full_landmark_lib = generate_symmetric_landmarks(mesh, cfg["landmark_fn"]())
     seams = cfg["topology"](full_landmark_lib)
 
-    texture_spec = TextureSpec("Stripes", 10.0, 50.0)
+    texture_spec = TextureSpec("Stripes", period_u, period_v, wallpaper_group=wallpaper_group)
 
     instance = load_experiment(
         mesh_path=mesh_path,

@@ -17,24 +17,34 @@ def _polygon_to_path(poly) -> Path:
     return Path(coords, codes)
 
 
-def _draw_texture_lines_in_patch(ax, poly, phase_offset_y, period_y, color, lw=1.0, alpha=0.6):
-    """
-    Draw horizontal stripe lines inside a single patch polygon.
-    Lines are spaced period_y apart and shifted by phase_offset_y.
-    Each line is clipped to the polygon boundary.
-    """
+def _draw_texture_hlines_in_patch(ax, poly, phase_offset_y, period_y, color, lw=1.0, alpha=0.6):
+    """Draw horizontal stripe lines clipped to poly."""
     minx, miny, maxx, maxy = poly.bounds
     clip_path = PathPatch(_polygon_to_path(poly), transform=ax.transData)
-
-    # First line position: find the nearest stripe below miny, shifted by phase
-    y_start = miny - ((miny - phase_offset_y) % period_y)
-
-    y = y_start
+    y = miny - ((miny - phase_offset_y) % period_y)
     while y <= maxy + period_y:
-        line, = ax.plot([minx, maxx], [y, y],
-                        color=color, lw=lw, alpha=alpha, zorder=4)
+        line, = ax.plot([minx, maxx], [y, y], color=color, lw=lw, alpha=alpha, zorder=4)
         line.set_clip_path(clip_path)
         y += period_y
+
+
+def _draw_texture_vlines_in_patch(ax, poly, phase_offset_x, period_x, color, lw=1.0, alpha=0.6):
+    """Draw vertical stripe lines clipped to poly."""
+    minx, miny, maxx, maxy = poly.bounds
+    clip_path = PathPatch(_polygon_to_path(poly), transform=ax.transData)
+    x = minx - ((minx - phase_offset_x) % period_x)
+    while x <= maxx + period_x:
+        line, = ax.plot([x, x], [miny, maxy], color=color, lw=lw, alpha=alpha, zorder=4)
+        line.set_clip_path(clip_path)
+        x += period_x
+
+
+def _draw_texture_in_patch(ax, poly, texture_spec, color, lw=1.0, alpha=0.6):
+    """Dispatch texture line drawing based on wallpaper group."""
+    group = getattr(texture_spec, 'wallpaper_group', 'stripes')
+    _draw_texture_hlines_in_patch(ax, poly, 0.0, texture_spec.period_y, color, lw, alpha)
+    if group == 'grid':
+        _draw_texture_vlines_in_patch(ax, poly, 0.0, texture_spec.period_x, color, lw, alpha)
 
 
 def visualize_layout(fabric_state, texture_spec, title=None):
@@ -58,15 +68,9 @@ def visualize_layout(fabric_state, texture_spec, title=None):
         ax.fill(x, y, color=color, alpha=0.25, zorder=2)
         ax.plot(x, y, color=color, lw=1.5, zorder=3)
 
-        # Texture stripes clipped to this patch.
-        # Use phase_offset_y=0 so all patches share the same global stripe grid
-        # (stripes at n * period_y), matching a real continuous fabric.
-        _draw_texture_lines_in_patch(
-            ax, poly,
-            phase_offset_y=0.0,
-            period_y=texture_spec.period_y,
-            color=color, lw=1.2, alpha=0.85
-        )
+        # Texture lines clipped to this patch (horizontal for stripes, H+V for grid).
+        # phase_offset=0 so all patches share the same global texture grid.
+        _draw_texture_in_patch(ax, poly, texture_spec, color, lw=1.2, alpha=0.85)
 
         # Anchor point
         ox, oy = getattr(item, 'phase_offset', (0.0, 0.0))

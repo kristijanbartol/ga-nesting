@@ -1,11 +1,11 @@
 """
-Visualize a simulated garment PLY with stripe texture in Polyscope,
+Visualize a simulated garment PLY with stripe or grid texture in Polyscope,
 and debug the UV pipeline by coloring the 2D sewing pattern with the
 same UV values.
 
 UV coordinates stored in the PLY (s, t) are in fabric-space mm, produced by
 the simulation pipeline with Stage2 + kappa transforms applied.  Dividing by
-the stripe period gives normalized UV where one full tile = one stripe period.
+the period gives normalized UV where one full tile = one texture period.
 """
 
 import os
@@ -15,8 +15,9 @@ import polyscope as ps
 
 
 # ── Config ──────────────────────────────────────────────────────────────────
-PERIOD_U_MM = 50.0
-PERIOD_V_MM = 50.0
+PERIOD_U_MM    = 50.0
+PERIOD_V_MM    = 50.0
+WALLPAPER_GROUP = "stripes"   # "stripes" | "grid"
 PLY_PATH      = "results/simulation/upper/cloth_00000.ply"
 PARAM_DIR     = "results/pattern/best/upper"
 PATCHES_3D_DIR = "data/patches/best/upper"
@@ -39,18 +40,32 @@ def load_ply_with_uv(ply_path: str):
     return vertices, faces, uv
 
 
-def _stripe_value(uv_mm: np.ndarray, period_v_mm: float) -> np.ndarray:
-    """Per-vertex stripe scalar in [0, 1], varying along v."""
-    v_norm = uv_mm[:, 1] / period_v_mm
-    return 0.5 + 0.5 * np.cos(2.0 * np.pi * v_norm)
+def _texture_value(uv_mm: np.ndarray,
+                   period_u_mm: float,
+                   period_v_mm: float,
+                   wallpaper_group: str) -> np.ndarray:
+    """
+    Per-vertex texture scalar in [0, 1].
+
+    stripes: varies along v only  — 0.5 + 0.5·cos(2π·v/T_v)
+    grid:    product of both axes — (0.5 + 0.5·cos(2π·u/T_u))
+                                  · (0.5 + 0.5·cos(2π·v/T_v))
+    """
+    t_v = 0.5 + 0.5 * np.cos(2.0 * np.pi * uv_mm[:, 1] / period_v_mm)
+    if wallpaper_group == 'grid':
+        t_u = 0.5 + 0.5 * np.cos(2.0 * np.pi * uv_mm[:, 0] / period_u_mm)
+        return t_u * t_v
+    return t_v
 
 
-def stripe_colors(uv_mm: np.ndarray,
-                  period_v_mm: float,
-                  color_a: np.ndarray = COLOR_A,
-                  color_b: np.ndarray = COLOR_B) -> np.ndarray:
-    """Per-vertex (N, 3) RGB stripe color from fabric-space UV in mm."""
-    t = _stripe_value(uv_mm, period_v_mm)
+def texture_colors(uv_mm: np.ndarray,
+                   period_u_mm: float,
+                   period_v_mm: float,
+                   wallpaper_group: str,
+                   color_a: np.ndarray = COLOR_A,
+                   color_b: np.ndarray = COLOR_B) -> np.ndarray:
+    """Per-vertex (N, 3) RGB texture color from fabric-space UV in mm."""
+    t = _texture_value(uv_mm, period_u_mm, period_v_mm, wallpaper_group)
     return np.outer(t, color_a) + np.outer(1.0 - t, color_b)
 
 
@@ -76,13 +91,15 @@ def _load_2d_pattern(param_dir: str, back_labels: str):
 def debug_uv_2d(ply_path: str = PLY_PATH,
                 param_dir: str = PARAM_DIR,
                 back_labels: str = BACK_LABELS,
-                period_v_mm: float = PERIOD_V_MM):
+                period_u_mm: float = PERIOD_U_MM,
+                period_v_mm: float = PERIOD_V_MM,
+                wallpaper_group: str = WALLPAPER_GROUP):
     """
     Color the 2D sewing pattern by the UV values stored in the PLY and
     show the UV distribution in fabric space.
 
-    Left panel:  2D parameterisation vertices colored by stripe(s, t) from PLY.
-                 Stripe colors must be continuous across seam boundaries if the
+    Left panel:  2D parameterisation vertices colored by texture(s, t) from PLY.
+                 Texture must be continuous across seam boundaries if the
                  UV pipeline is correct.
     Right panel: UV scatter in fabric space (mm) — sanity-checks magnitude and
                  distribution; patches should occupy distinct, non-overlapping
@@ -101,23 +118,23 @@ def debug_uv_2d(ply_path: str = PLY_PATH,
         "Ensure PARAM_DIR matches the patches used during simulation."
     )
 
-    v_val = _stripe_value(uv_mm, period_v_mm)
-    cmap  = LinearSegmentedColormap.from_list("stripe", [COLOR_B, COLOR_A])
+    t_val = _texture_value(uv_mm, period_u_mm, period_v_mm, wallpaper_group)
+    cmap  = LinearSegmentedColormap.from_list("texture", [COLOR_B, COLOR_A])
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
 
     # Left: 2D sewing pattern colored by PLY UV
     tri = mtri.Triangulation(verts_2d[:, 0], verts_2d[:, 1], faces)
-    ax1.tripcolor(tri, v_val, cmap=cmap, vmin=0, vmax=1, shading='gouraud')
+    ax1.tripcolor(tri, t_val, cmap=cmap, vmin=0, vmax=1, shading='gouraud')
     ax1.set_aspect('equal')
-    ax1.set_title('2D sewing pattern — stripe color from PLY UV\n'
-                  '(stripes must be continuous across seam boundaries)')
+    ax1.set_title(f'2D sewing pattern — {wallpaper_group} texture from PLY UV\n'
+                  '(texture must be continuous across seam boundaries)')
     ax1.set_xlabel('u  (m, parameterisation space)')
     ax1.set_ylabel('v  (m, parameterisation space)')
 
     # Right: UV scatter in fabric space
     ax2.scatter(uv_mm[:, 0], uv_mm[:, 1],
-                c=v_val, cmap=cmap, s=0.3, vmin=0, vmax=1)
+                c=t_val, cmap=cmap, s=0.3, vmin=0, vmax=1)
     ax2.set_aspect('equal')
     ax2.set_title('UV distribution in fabric space (mm)\n'
                   '(patches should occupy distinct, non-overlapping regions)')
@@ -157,9 +174,10 @@ def show_best_nesting(json_path: str = "results/pattern/best/best_individual.jso
         period_u=d['period_u_mm'],
         period_v=d['period_v_mm'],
     )
-    texture = TextureSpec(name="stripes",
+    texture = TextureSpec(name=d.get('wallpaper_group', 'stripes'),
                           period_x=d['period_u_mm'],
-                          period_y=d['period_v_mm'])
+                          period_y=d['period_v_mm'],
+                          wallpaper_group=d.get('wallpaper_group', 'stripes'))
 
     # Restore the exact Stage2 transforms and kappas used during evaluation
     # so the nesting layout matches the run_ga.py BEST visualization exactly.
@@ -185,23 +203,43 @@ def show_best_nesting(json_path: str = "results/pattern/best/best_individual.jso
 
 def visualize(ply_path: str = PLY_PATH,
               period_u_mm: float = PERIOD_U_MM,
-              period_v_mm: float = PERIOD_V_MM):
-    """3D Polyscope render of the simulated garment with stripe texture."""
+              period_v_mm: float = PERIOD_V_MM,
+              wallpaper_group: str = WALLPAPER_GROUP):
+    """3D Polyscope render of the simulated garment with texture."""
     vertices, faces, uv_mm = load_ply_with_uv(ply_path)
 
     print(f"Loaded '{ply_path}': {len(vertices)} vertices, {len(faces)} faces")
     print(f"UV range — s: [{uv_mm[:, 0].min():.1f}, {uv_mm[:, 0].max():.1f}] mm  "
           f"t: [{uv_mm[:, 1].min():.1f}, {uv_mm[:, 1].max():.1f}] mm")
 
-    colors = stripe_colors(uv_mm, period_v_mm)
+    colors = texture_colors(uv_mm, period_u_mm, period_v_mm, wallpaper_group)
 
     ps.init()
     ps_mesh = ps.register_surface_mesh("garment", vertices, faces, smooth_shade=True)
-    ps_mesh.add_color_quantity("stripe_texture", colors, defined_on='vertices', enabled=True)
+    ps_mesh.add_color_quantity("texture", colors, defined_on='vertices', enabled=True)
     ps.show()
 
 
+def parse_args():
+    import argparse
+    p = argparse.ArgumentParser(description="Visualize simulated garment texture.")
+    p.add_argument("--wallpaper", default=WALLPAPER_GROUP, choices=["stripes", "grid"],
+                   help="Texture wallpaper group (default: stripes)")
+    p.add_argument("--ply", default=PLY_PATH,
+                   help="Path to simulated garment PLY (default: %(default)s)")
+    p.add_argument("--json", default="results/pattern/best/best_individual.json",
+                   help="Path to best_individual.json (default: %(default)s)")
+    p.add_argument("--period", type=float, default=PERIOD_U_MM,
+                   help="Texture period in mm, applied to both U and V (default: %(default)s)")
+    return p.parse_args()
+
+
 if __name__ == "__main__":
-    show_best_nesting()  # 1) reference: same nesting layout as run_ga.py
-    debug_uv_2d()        # 2) UV debug: color 2D pattern by PLY UV values
-    visualize()        # 3) 3D Polyscope render
+    args = parse_args()
+    show_best_nesting(json_path=args.json)                                 # 1) reference nesting layout
+    debug_uv_2d(ply_path=args.ply,
+                period_u_mm=args.period, period_v_mm=args.period,
+                wallpaper_group=args.wallpaper)                            # 2) UV debug: 2D pattern colored by PLY UV
+    visualize(ply_path=args.ply,
+              period_u_mm=args.period, period_v_mm=args.period,
+              wallpaper_group=args.wallpaper)                              # 3) 3D Polyscope render

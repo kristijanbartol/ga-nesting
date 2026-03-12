@@ -16,6 +16,7 @@ from nesting.loader import PatchLoader
 from nesting.engine import NestingEngine
 
 from spec import SeamPathType
+from wallpaper import get_policy
 from .geometry_block import build_instance, run_geometry_blackbox_timeout
 
 
@@ -94,6 +95,8 @@ class RealEvaluatorConfig:
     # directory, and load patches from those directories instead.
     num_bodies: int = 1
 
+    wallpaper_group: str = "stripes"
+
     # fitness weights: set w1=0, w2=1 to optimize only texture alignment
     w1: float = 1.0  # fabric height
     w2: float = 1.0  # seam phase mismatch
@@ -115,7 +118,11 @@ class RealEvaluator:
             mesh_path="data/SMPL_FEMALE.ply",
             fabric_width=cfg.fabric_width_mm / 1000.0,
             garment_type=cfg.garment_part,
+            wallpaper_group=cfg.wallpaper_group,
+            period_u=cfg.period_u_mm,
+            period_v=cfg.period_v_mm,
         )
+        self.policy = get_policy(cfg.wallpaper_group)
 
         # 2) Baseline delta: fixed middle of each landmark quad, same as test_geometry.py
         # instance.num_landmarks landmarks => delta_uv length = 2*num_landmarks
@@ -364,24 +371,9 @@ class RealEvaluator:
         # but may have different kappa/rho assignments.
         # f2 is averaged over bodies so it stays in [0, 0.5*num_seams] regardless of N.
 
-        # Absolute orientation penalty: any patch rotated 90°/270° produces vertical
-        # stripes on the garment regardless of seam alignment.  This penalty is added
-        # once per rotated patch and is strictly greater than the maximum f2 achievable
-        # by any unrotated configuration (= total_active_weight * 0.5), so the GA
-        # always strictly prefers non-rotated solutions over rotated ones.
-        total_active_weight = sum(c.weight for c in weighted_constraints)
-        abs_rot_penalty = total_active_weight * 0.5 + 0.01  # > max non-rotated f2
-
         f2_total = 0.0
         for b in range(N):
             f2_body = 0.0
-
-            # Per-patch absolute orientation penalty.
-            for item_idx in range(M):
-                genome_idx = b * M + item_idx
-                rho_val = int(g.rho[genome_idx]) % 4 if genome_idx < g.rho.size else 0
-                if rho_val % 2 != 0:
-                    f2_body += abs_rot_penalty
 
             for c in weighted_constraints:
                 Ti = Tsol.get(c.patch_i, Rigid2D(0, 0, 0))
@@ -400,12 +392,11 @@ class RealEvaluator:
                 # c.weight was set to seam importance in weighted_constraints above.
                 seam_imp = c.weight
 
-                # Stripe-direction penalty: patches rotated by an odd multiple of 90°
-                # relative to each other produce perpendicular stripes at the seam —
-                # always wrong regardless of phase.  Penalty must be strictly greater
-                # than the maximum possible phase mismatch (seam_imp * 0.5) so the GA
-                # always prefers any aligned orientation over a 90° rotation.
-                if (rho_i % 2) != (rho_j % 2):
+                # Orientation compatibility: if the two patches cannot be seam-aligned
+                # given their grain rotations (policy-dependent), add a hard penalty
+                # and skip the phase-mismatch computation.  The penalty is strictly
+                # greater than the maximum possible phase mismatch (seam_imp * 0.5).
+                if not self.policy.seam_compatible(rho_i, rho_j):
                     f2_body += seam_imp * 1.0
                     continue
 

@@ -52,14 +52,24 @@ class TextureSpec:
     name: str
     period_x: float
     period_y: float
-    
+    wallpaper_group: str = "stripes"
+
     def get_valid_symmetries(self) -> List[float]:
         """
-        Returns allowed relative rotation angles (degrees) for internal alignment.
-        e.g., Stripes -> [0, 180], Grid -> [0, 90, 180, 270].
+        Returns allowed relative rotation angles (degrees) for this group.
+        Stripes (PM)  -> [0, 180]
+        Grid   (PMM)  -> [0, 90, 180, 270]
         """
-        # TODO: full implementation
-        return [0.0, 180.0]
+        from wallpaper import get_policy, StripesPolicy, GridPolicy
+        policy = get_policy(self.wallpaper_group)
+        if isinstance(policy, GridPolicy):
+            return [0.0, 90.0, 180.0, 270.0]
+        return [0.0, 180.0]  # StripesPolicy and future 2-fold groups
+
+    def wallpaper_policy(self):
+        """Return the WallpaperPolicy for this texture's group."""
+        from wallpaper import get_policy
+        return get_policy(self.wallpaper_group)
 
 @dataclass(frozen=True)
 class ProblemInstance:

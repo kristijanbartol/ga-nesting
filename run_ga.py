@@ -16,9 +16,10 @@ from ga.real_evaluator import load_patch_vertices_full_from_latest
 
 
 # TODO:
-#   - Other symmetry groups (see Wolff et al. for reference)
+#   - Other symmetry groups (see Wolff et al. for reference) OOOOO
 #   - Add fit loss component + include parameterization parameters into GA
 #   - Add onesie (and dress)
+#   - Update latex problem specification
 #   - Write paper
 
 
@@ -204,8 +205,29 @@ def save_best_individual_data(best_ind,
     return best_root, dst_seams, dst_3d
 
 
+def parse_args():
+    import argparse
+    p = argparse.ArgumentParser(description="Run GA-Nesting optimisation.")
+    p.add_argument("--garment", default="upper", choices=["upper", "lower"],
+                   help="Garment type (default: upper)")
+    p.add_argument("--wallpaper", default="stripes", choices=["stripes", "grid"],
+                   help="Texture wallpaper group (default: stripes)")
+    p.add_argument("--pop", type=int, default=50,
+                   help="Population size (default: 50)")
+    p.add_argument("--gens", type=int, default=1,
+                   help="Number of generations (default: 1)")
+    p.add_argument("--seed", type=int, default=0,
+                   help="Random seed (default: 0)")
+    p.add_argument("--w1", type=float, default=1.0,
+                   help="Fitness weight for fabric height f1 (default: 1.0)")
+    p.add_argument("--w2", type=float, default=0.0,
+                   help="Fitness weight for seam phase mismatch f2 (default: 0.0)")
+    return p.parse_args()
+
+
 def main():
-    GARMENT_TYPE = "upper"   # ← change this one line to switch garments: "lower" | "upper"
+    args = parse_args()
+    GARMENT_TYPE = args.garment
 
     eval_cfg = RealEvaluatorConfig(
         garment_part=GARMENT_TYPE,
@@ -216,8 +238,9 @@ def main():
         K=8,
         fabric_width_mm=150.0 * 10.0,
         num_bodies=2,
-        w1=1,
-        w2=0
+        wallpaper_group=args.wallpaper,
+        w1=args.w1,
+        w2=args.w2,
     )
     evaluator = RealEvaluator(eval_cfg)
 
@@ -240,9 +263,9 @@ def main():
     )
 
     cfg = GAConfig(
-        seed=0,
-        population_size=50,
-        generations=1,
+        seed=args.seed,
+        population_size=args.pop,
+        generations=args.gens,
         elite_count=4,
         tournament_k=4,
         crossover_prob=0.7,
@@ -299,6 +322,7 @@ def main():
             "period_v_mm":    eval_cfg.period_v_mm,
             "fabric_width_mm": eval_cfg.fabric_width_mm,
             "garment_part":   GARMENT_TYPE,
+            "wallpaper_group": eval_cfg.wallpaper_group,
             "num_bodies":     eval_cfg.num_bodies,
             "best_root":      best_root,
             "best_seam_dir":  best_seam_dir,
