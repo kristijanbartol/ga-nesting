@@ -157,6 +157,7 @@ def seam_phase_mismatch(
     weight: float,
     transform_i: Optional[Rigid2D] = None,
     transform_j: Optional[Rigid2D] = None,
+    glide_transforms=None,
 ) -> float:
     """
     Spec-compliant seam phase mismatch (f2 contribution for one seam).
@@ -173,6 +174,11 @@ def seam_phase_mismatch(
         Mismatch(s) = weight * mean_over_pairs( mean(Delta_u, Delta_v) )
 
     weight=0 returns 0.0 immediately.
+
+    glide_transforms: optional list of callables (phi_j -> phi_j') representing
+    glide-reflection symmetries of the wallpaper group.  When provided, the
+    per-point mismatch is the elementwise minimum over the identity and all
+    glide images — a seam is aligned if it matches under *any* symmetry.
     """
     if weight <= 0.0 or len(seam_pairs) == 0:
         return 0.0
@@ -197,12 +203,19 @@ def seam_phase_mismatch(
     phi_i = frac(phi_i + (kappa_i / float(K)))
     phi_j = frac(phi_j + (kappa_j / float(K)))
 
-    # Wrapped absolute difference per axis: Delta in [0, 0.5]
-    diff = np.abs(phi_i - phi_j)           # (N, 2)
-    delta = np.minimum(diff, 1.0 - diff)   # (N, 2)
+    def _mismatch_pp(pi, pj):
+        diff = np.abs(pi - pj)
+        return np.minimum(diff, 1.0 - diff).mean(axis=1)   # (N,)
 
-    # Per-point mismatch: mean over both axes
-    mismatch_per_point = delta.mean(axis=1)   # (N,)
+    # Wrapped absolute difference per axis: Delta in [0, 0.5]
+    mismatch_per_point = _mismatch_pp(phi_i, phi_j)   # (N,)
+
+    # For glide-reflection groups: a seam aligns if it matches under any symmetry
+    if glide_transforms:
+        for glide in glide_transforms:
+            mismatch_per_point = np.minimum(
+                mismatch_per_point, _mismatch_pp(phi_i, glide(phi_j))
+            )
 
     # Arc-length weighting (trapezoidal rule, approximates the 1/L_s integral).
     # Segment lengths are computed on the i-side; pairs are ordered along the seam.

@@ -415,6 +415,7 @@ class RealEvaluator:
                     weight=seam_imp,
                     transform_i=None,
                     transform_j=None,
+                    glide_transforms=self.policy.glide_transforms(),
                 )
             f2_total += f2_body
 

@@ -77,6 +77,33 @@ def _texture_value(uv_mm: np.ndarray,
         dv = v_frac - np.round(v_frac)
         r = np.sqrt(du ** 2 + dv ** 2)
         return np.clip(1.0 - r / 0.32, 0.0, 1.0)
+    if wallpaper_group == 'pg':
+        # Herringbone: alternating rows of diagonal stripes reversing every half-period.
+        # Even rows (v_cell < 0.5): use (v - u) diagonal; odd rows: use (v + u) diagonal.
+        u_frac = (uv_mm[:, 0] % period_u_mm) / period_u_mm
+        v_frac = (uv_mm[:, 1] % period_v_mm) / period_v_mm
+        row_parity = np.floor(v_frac * 2.0).astype(int) % 2
+        phase_ne = (v_frac - u_frac) * 2.0   # NE diagonal within cell
+        phase_nw = (v_frac + u_frac) * 2.0   # NW diagonal within cell
+        return 0.5 + 0.5 * np.cos(2.0 * np.pi * np.where(row_parity == 0, phase_ne, phase_nw))
+    if wallpaper_group == 'pmg':
+        # Chevron: V-shapes via rows that alternate slope direction, producing
+        # mirror symmetry on vertical axes but glide on horizontal.
+        u_frac = (uv_mm[:, 0] % period_u_mm) / period_u_mm
+        v_frac = (uv_mm[:, 1] % period_v_mm) / period_v_mm
+        row_parity = np.floor(v_frac * 2.0).astype(int) % 2
+        phase_ne = (v_frac * 2.0 % 1.0) - u_frac
+        phase_nw = (v_frac * 2.0 % 1.0) + u_frac
+        return 0.5 + 0.5 * np.cos(2.0 * np.pi * np.where(row_parity == 0, phase_ne, phase_nw))
+    if wallpaper_group == 'pgg':
+        # Brick bond: staggered rectangles — odd rows offset by half a period.
+        u_frac = (uv_mm[:, 0] % period_u_mm) / period_u_mm
+        v_frac = (uv_mm[:, 1] % period_v_mm) / period_v_mm
+        row = np.floor(v_frac * 2.0).astype(int) % 2
+        u_shifted = np.where(row == 1, (u_frac + 0.5) % 1.0, u_frac)
+        cos_u = np.cos(2.0 * np.pi * u_shifted)
+        cos_v = np.cos(2.0 * np.pi * v_frac * 2.0)
+        return (0.5 + 0.5 * cos_u) * (0.5 + 0.5 * cos_v)
     return 0.5 + 0.5 * np.cos(2.0 * np.pi * uv_mm[:, 1] / period_v_mm)
 
 
@@ -245,7 +272,7 @@ def visualize(ply_path: str = PLY_PATH,
 def parse_args():
     import argparse
     p = argparse.ArgumentParser(description="Visualize simulated garment texture.")
-    p.add_argument("--wallpaper", default=WALLPAPER_GROUP, choices=["stripes", "diagonal_stripes", "grid", "p4", "p4m"],
+    p.add_argument("--wallpaper", default=WALLPAPER_GROUP, choices=["stripes", "diagonal_stripes", "grid", "p4", "p4m", "pg", "pmg", "pgg"],
                    help="Texture wallpaper group (default: stripes)")
     p.add_argument("--ply", default=PLY_PATH,
                    help="Path to simulated garment PLY (default: %(default)s)")

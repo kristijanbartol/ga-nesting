@@ -59,7 +59,7 @@
             "program": "${workspaceFolder}/run_ga.py",
             "args": [
                 "--garment", "upper",
-                "--wallpaper", "p4m",
+                "--wallpaper", "pg",
                 "--pop", "10",
                 "--gens", "1",
                 "--seed", "0",

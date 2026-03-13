@@ -35,6 +35,15 @@ class WallpaperPolicy(ABC):
         """
         return np.array([1.0, 0.0]), np.array([0.0, 1.0])
 
+    def glide_transforms(self) -> list:
+        """
+        Return a list of callables (phi: (N,2) → phi': (N,2)) representing
+        glide-reflection symmetries in fractional phase coordinates.
+        The default (no glide symmetries) returns an empty list.
+        Override for PG, PMG, PGG and related groups.
+        """
+        return []
+
 
 class StripesPolicy(WallpaperPolicy):
     """
@@ -74,12 +83,55 @@ class GridPolicy(WallpaperPolicy):
         return True
 
 
+class HerringbonePolicy(StripesPolicy):
+    """
+    PG — herringbone (glide reflection only, no mirror axes).
+
+    Seam compatibility is the same as stripes (same-parity rho), but adjacent
+    patches may also align via the glide reflection: reflect u and shift v by
+    half a period.  The evaluator uses glide_transforms() to check this.
+    """
+    def glide_transforms(self):
+        return [lambda p: np.stack([1.0 - p[:, 0], (p[:, 1] + 0.5) % 1.0], axis=1)]
+
+
+class ChevronPolicy(StripesPolicy):
+    """
+    PMG — chevron (one mirror axis + one glide reflection axis).
+
+    Like stripes for orientation compatibility.  Two extra symmetries:
+    a pure mirror (flip v) and a glide (shift u by half + flip v).
+    """
+    def glide_transforms(self):
+        return [
+            lambda p: np.stack([p[:, 0], 1.0 - p[:, 1]], axis=1),                            # mirror v
+            lambda p: np.stack([(p[:, 0] + 0.5) % 1.0, 1.0 - p[:, 1]], axis=1),             # glide: shift u + mirror v
+        ]
+
+
+class BrickPolicy(StripesPolicy):
+    """
+    PGG — brick bond (two perpendicular glide reflection axes, no mirror axes).
+
+    Like stripes for orientation compatibility.  Two glide symmetries:
+    flip u + shift v by half, and shift u by half + flip v.
+    """
+    def glide_transforms(self):
+        return [
+            lambda p: np.stack([1.0 - p[:, 0], (p[:, 1] + 0.5) % 1.0], axis=1),             # glide 1: flip u + shift v
+            lambda p: np.stack([(p[:, 0] + 0.5) % 1.0, 1.0 - p[:, 1]], axis=1),             # glide 2: shift u + flip v
+        ]
+
+
 POLICIES: dict[str, WallpaperPolicy] = {
     "stripes":          StripesPolicy(),
     "diagonal_stripes": DiagonalStripesPolicy(),
     "grid":             GridPolicy(),
-    "p4":               GridPolicy(),   # 4-fold rotation, no mirrors — same seam math as grid
-    "p4m":              GridPolicy(),   # 4-fold + mirrors (polka dots) — same seam math as grid
+    "p4":               GridPolicy(),        # 4-fold rotation, no mirrors — same seam math as grid
+    "p4m":              GridPolicy(),        # 4-fold + mirrors (polka dots) — same seam math as grid
+    "pg":               HerringbonePolicy(), # glide reflection only — herringbone
+    "pmg":              ChevronPolicy(),     # mirror + glide — chevron
+    "pgg":              BrickPolicy(),       # two glide axes — brick bond
 }
 
 

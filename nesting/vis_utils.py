@@ -101,6 +101,92 @@ def _draw_texture_dots_in_patch(ax, poly, period_x, period_y, color, alpha=0.7):
         x += period_x
 
 
+def _draw_texture_herringbone_in_patch(ax, poly, period_x, period_y, color, lw=1.0, alpha=0.6):
+    """
+    Draw herringbone (PG) pattern: alternating rows of diagonal stripes
+    that reverse direction every half-period.  Within even rows the lines
+    go NE (y = x + c); within odd rows they go NW (y = -x + c).
+    """
+    minx, miny, maxx, maxy = poly.bounds
+    clip_path = PathPatch(_polygon_to_path(poly), transform=ax.transData)
+    row_height = period_y / 2.0
+    spacing = period_x * np.sqrt(2.0)
+    row = int(np.floor(miny / row_height))
+    while row * row_height <= maxy:
+        y0 = row * row_height
+        y1 = y0 + row_height
+        if row % 2 == 0:
+            # NE diagonals
+            c = (miny - maxx) - (((miny - maxx) - 0.0) % spacing)
+            while c <= (maxy - minx) + spacing:
+                line, = ax.plot([minx - 1, maxx + 1], [minx + c - 1, maxx + c + 1],
+                                color=color, lw=lw, alpha=alpha, zorder=4)
+                line.set_clip_path(clip_path)
+                c += spacing
+        else:
+            # NW anti-diagonals
+            c = (miny + minx) - (((miny + minx) - 0.0) % spacing)
+            while c <= (maxy + maxx) + spacing:
+                line, = ax.plot([minx - 1, maxx + 1], [c - (minx - 1), c - (maxx + 1)],
+                                color=color, lw=lw, alpha=alpha, zorder=4)
+                line.set_clip_path(clip_path)
+                c += spacing
+        row += 1
+
+
+def _draw_texture_chevron_in_patch(ax, poly, period_x, period_y, color, lw=1.0, alpha=0.6):
+    """
+    Draw chevron (PMG) pattern: V-shapes formed by pairs of diagonal lines
+    that mirror at each horizontal stripe boundary.
+    """
+    minx, miny, maxx, maxy = poly.bounds
+    clip_path = PathPatch(_polygon_to_path(poly), transform=ax.transData)
+    row_height = period_y / 2.0
+    spacing = period_x * np.sqrt(2.0)
+    # Alternate NE and NW diagonals in each band
+    for parity, y_start in enumerate(np.arange(miny - row_height, maxy + row_height, row_height)):
+        if parity % 2 == 0:
+            c = (y_start - maxx) - (((y_start - maxx) - 0.0) % spacing)
+            while c <= (y_start + row_height - minx) + spacing:
+                line, = ax.plot([minx - 1, maxx + 1], [minx + c - 1, maxx + c + 1],
+                                color=color, lw=lw, alpha=alpha, zorder=4)
+                line.set_clip_path(clip_path)
+                c += spacing
+        else:
+            c = (y_start + minx) - (((y_start + minx) - 0.0) % spacing)
+            while c <= (y_start + row_height + maxx) + spacing:
+                line, = ax.plot([minx - 1, maxx + 1], [c - (minx - 1), c - (maxx + 1)],
+                                color=color, lw=lw, alpha=alpha, zorder=4)
+                line.set_clip_path(clip_path)
+                c += spacing
+
+
+def _draw_texture_brick_in_patch(ax, poly, period_x, period_y, color, lw=1.0, alpha=0.6):
+    """
+    Draw brick bond (PGG) pattern: horizontal rows of staggered rectangles,
+    each row offset by half a period relative to the one below.
+    """
+    minx, miny, maxx, maxy = poly.bounds
+    clip_path = PathPatch(_polygon_to_path(poly), transform=ax.transData)
+    # Horizontal row lines
+    y = miny - (miny % period_y)
+    while y <= maxy + period_y:
+        line, = ax.plot([minx, maxx], [y, y], color=color, lw=lw, alpha=alpha, zorder=4)
+        line.set_clip_path(clip_path)
+        y += period_y
+    # Vertical grout lines — staggered: even rows at x=0, odd rows at x=period_x/2
+    row = int(np.floor(miny / period_y))
+    while row * period_y <= maxy:
+        offset = 0.0 if row % 2 == 0 else period_x / 2.0
+        x = minx - ((minx - offset) % period_x)
+        while x <= maxx + period_x:
+            line, = ax.plot([x, x], [row * period_y, (row + 1) * period_y],
+                            color=color, lw=lw, alpha=alpha, zorder=4)
+            line.set_clip_path(clip_path)
+            x += period_x
+        row += 1
+
+
 def _draw_texture_in_patch(ax, poly, texture_spec, color, lw=1.0, alpha=0.6):
     """Dispatch texture line drawing based on wallpaper group."""
     group = getattr(texture_spec, 'wallpaper_group', 'stripes')
@@ -117,6 +203,12 @@ def _draw_texture_in_patch(ax, poly, texture_spec, color, lw=1.0, alpha=0.6):
         _draw_texture_antidiaglines_in_patch(ax, poly, 0.0, texture_spec.period_y, color, lw * 0.7, alpha * 0.7)
     elif group == 'p4m':
         _draw_texture_dots_in_patch(ax, poly, texture_spec.period_x, texture_spec.period_y, color, alpha)
+    elif group == 'pg':
+        _draw_texture_herringbone_in_patch(ax, poly, texture_spec.period_x, texture_spec.period_y, color, lw, alpha)
+    elif group == 'pmg':
+        _draw_texture_chevron_in_patch(ax, poly, texture_spec.period_x, texture_spec.period_y, color, lw, alpha)
+    elif group == 'pgg':
+        _draw_texture_brick_in_patch(ax, poly, texture_spec.period_x, texture_spec.period_y, color, lw, alpha)
     else:  # 'stripes' and future 2-fold rectangular groups
         _draw_texture_hlines_in_patch(ax, poly, 0.0, texture_spec.period_y, color, lw, alpha)
 
