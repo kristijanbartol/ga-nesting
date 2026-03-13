@@ -16,7 +16,6 @@ from ga.real_evaluator import load_patch_vertices_full_from_latest
 
 
 # TODO:
-#   - Other symmetry groups (see Wolff et al. for reference) OOOOO
 #   - Add fit loss component + include parameterization parameters into GA
 #   - Add onesie (and dress)
 #   - Update latex problem specification

@@ -18,7 +18,7 @@
 
 We define the problem as
 \[
-\Psi = \langle M, \mathcal{T}, \mathcal{L}, \Omega \rangle,
+\Psi = \langle M, \mathcal{T}, \mathcal{L}, \mathbf{w}, \Omega \rangle,
 \]
 where:
 
@@ -26,9 +26,68 @@ where:
     \item $M = (V,E,F)$ is the 3D garment mesh.
     \item $\mathcal{T}$ is a periodic texture defined over the fabric plane.
     \item The periodicity is characterized by a lattice basis $B = \{\mathbf{u}, \mathbf{v}\}$.
-    \item $\mathcal{L} = \{L_1, \dots, L_m\}$ defines admissible regions for seam keypoints.
+    \item $\mathcal{L} = \{L_1, \dots, L_m\}$ defines admissible quad regions for seam keypoints.
+    \item $\mathbf{w} = \{w_s\}_{s \in \mathcal{S}}$ are static per-seam importance weights, $w_s \in [0,1]$,
+          defined by the garment topology. Boundary seams are assigned $w_s = 0$ and excluded
+          from texture alignment; interior seams carry positive weights set by the designer.
     \item $\Omega = [0,W] \times [0,\infty)$ is the fabric domain.
 \end{itemize}
+
+\subsection{Texture Symmetry: Wallpaper Groups}
+
+A wallpaper group $\mathcal{G}$ characterises the full symmetry class of the periodic
+texture $\mathcal{T}$.
+It determines (i) which grain-rotation pairs $(\rho_i, \rho_j)$ can produce a
+valid seam alignment, and (ii) whether additional glide-reflection symmetries
+allow patches to align via a reflected copy of the texture.
+Eight groups are supported, listed in Table~\ref{tab:wallpaper}.
+
+\begin{table}[h]
+\centering
+\caption{Supported wallpaper groups.}
+\label{tab:wallpaper}
+\begin{tabular}{lll}
+\hline
+Group & Pattern & Seam compatibility \\
+\hline
+PM (stripes)          & horizontal stripes      & $\rho_i \equiv \rho_j \pmod{2}$ \\
+PM (diagonal stripes) & stripes at 45°          & $\rho_i \equiv \rho_j \pmod{2}$ \\
+PMM (grid)            & check / plaid           & all pairs \\
+P4                    & 4-fold rotation         & all pairs \\
+P4M                   & 4-fold + mirrors        & all pairs \\
+PG  (herringbone)     & glide reflection only   & $\rho_i \equiv \rho_j \pmod{2}$ \\
+PMG (chevron)         & mirror + glide          & $\rho_i \equiv \rho_j \pmod{2}$ \\
+PGG (brick bond)      & two glide axes          & $\rho_i \equiv \rho_j \pmod{2}$ \\
+\hline
+\end{tabular}
+\end{table}
+
+\paragraph{Seam compatibility.}
+If $\mathcal{G}$ declares $(\rho_i, \rho_j)$ incompatible, no phase offset can align
+the texture across the seam.
+Such pairs receive a hard penalty in $f_2$ in place of the phase-mismatch computation.
+
+\paragraph{Glide transforms.}
+For groups with glide-reflection symmetry (PG, PMG, PGG),
+two adjacent patches may align either directly or via a reflected copy of the texture.
+Each group defines a set of glide maps $\mathcal{G}_s = \{g_1, \dots\}$ acting on
+fractional phase coordinates.
+For PG: $g_1(\boldsymbol{\phi}) = (1{-}\phi^u,\; (\phi^v{+}\tfrac{1}{2})\bmod 1)$.
+For PMG: $g_1(\boldsymbol{\phi}) = (\phi^u,\; 1{-}\phi^v)$,\;
+         $g_2(\boldsymbol{\phi}) = ((\phi^u{+}\tfrac{1}{2})\bmod 1,\; 1{-}\phi^v)$.
+For PGG: $g_1(\boldsymbol{\phi}) = (1{-}\phi^u,\; (\phi^v{+}\tfrac{1}{2})\bmod 1)$,\;
+         $g_2(\boldsymbol{\phi}) = ((\phi^u{+}\tfrac{1}{2})\bmod 1,\; 1{-}\phi^v)$.
+
+The per-point mismatch is taken as the minimum over the identity and all glide images:
+\[
+\Delta_{\mathcal{G}}(\boldsymbol{\phi}_a, \boldsymbol{\phi}_b)
+= \min\!\Bigl(
+    \Delta(\boldsymbol{\phi}_a, \boldsymbol{\phi}_b),\;
+    \min_{g \in \mathcal{G}_s} \Delta(\boldsymbol{\phi}_a, g(\boldsymbol{\phi}_b))
+  \Bigr).
+\]
+For groups without glide symmetry $\mathcal{G}_s = \emptyset$ and
+$\Delta_{\mathcal{G}} = \Delta$.
 
 \subsection{Decision Variables (Genotype)}
 
@@ -40,19 +99,23 @@ A candidate solution is
 \boldsymbol{\delta},
 \boldsymbol{\rho},
 \boldsymbol{\kappa},
-\mathbf{w},
 \pi,
-h
+h,
+\lambda_s
 \rangle.
 \]
 
 \subsubsection{Seam Topology ($\boldsymbol{\delta}$)}
 
-Each seam keypoint $k_j$ is defined as
+Each landmark region $L_j$ is defined as a topological quad on the mesh surface,
+with four corner vertices specifying the region of interest.
+Each seam keypoint $k_j$ is obtained by bilinear interpolation within $L_j$:
 \[
-k_j = \Gamma_j(\delta_j), \quad \delta_j \in [0,1],
+k_j = \Gamma_j(\boldsymbol{\delta}_j), \quad \boldsymbol{\delta}_j = (u_j, v_j) \in [0,1]^2,
 \]
-where $\Gamma_j$ maps into region $L_j \subset M$.
+where $\Gamma_j$ performs bilinear interpolation at $(u_j, v_j)$ within $L_j$,
+followed by a snap to the nearest mesh vertex.
+The full parameter vector $\boldsymbol{\delta} \in [0,1]^{2m}$ concatenates all landmark coordinates.
 
 Seams $s \in \mathcal{S}$ are geodesics between corresponding keypoints.
 
@@ -78,20 +141,23 @@ Let $K$ be the number of phase bins per period.
 \kappa_i \in \{0,1,\dots,K-1\}.
 \]
 
-The effective phase shift for chart $p_i$ is
+The effective phase shift for chart $p_i$ along each lattice axis is
 \[
-\frac{\kappa_i}{K}.
+\frac{\kappa_i}{K},
 \]
+applied uniformly to both axes.
+This represents a discrete repeat offset within the fabric's fundamental period.
 
-This represents the discrete repeat offset within the fabric's fundamental period.
+\subsubsection{Parameterization Hyperparameters ($\lambda_s$)}
 
-\subsubsection{Seam Weights ($\mathbf{w}$)}
-
-For each internal seam $s \in \mathcal{S}_{adj}$,
+The seam straightness weight $\lambda_s$ controls the strength of the regularization
+term in the parameterization energy that encourages seam boundaries to be mapped
+to straight lines in 2D.
+It is applied uniformly across all seams and is selected from a discrete set
+of powers of two:
 \[
-w_s \in [0,1]
+\lambda_s \in \{2^0, 2^1, \dots, 2^7\}.
 \]
-defines its relative importance.
 
 \subsubsection{Nesting Variables ($\pi, h$)}
 
@@ -117,33 +183,80 @@ Charts must satisfy
 (\phi_i(p_i) + \mathbf{t}_i) &\subset \Omega.
 \end{align}
 
-\subsection{Texture Phase Evaluation}
+\subsection{Stage 2: Global Phase Alignment}
 
-Let $\mathrm{Phase}(\mathbf{x})$ denote the lattice phase of fabric position $\mathbf{x}$,
-computed using basis $B$ and reduced modulo one period.
-
-For chart $p_i$, the effective phase at fabric point $\mathbf{x}$ is
-
+After parameterization, the patches are connected into components by the seam graph:
+two patches belong to the same component if they share a seam with $w_s > 0$.
+Within each component, a small translational correction
 \[
-\mathrm{Phase}_i(\mathbf{x}) =
-\mathrm{Phase}(\mathbf{x}) +
-\frac{\kappa_i}{K}.
+\mathbf{c}_i \in \mathbb{R}^2
+\]
+is found per patch to minimise the total seam phase residual.
+One patch per component is designated the root and fixed at $\mathbf{c}_i = \mathbf{0}$;
+all others are free variables.
+
+For each seam $s$ with $w_s > 0$ connecting patches $p_i$ and $p_j$,
+and for each corresponding vertex pair $(a, b)$ on that seam,
+the signed wrapped phase residual per axis is
+\[
+r^d_{ab}
+= \mathrm{wrap}\!\left(
+    \mathrm{Phase}_i(\mathbf{x}_a + \mathbf{c}_i)^d
+  - \mathrm{Phase}_j(\mathbf{x}_b + \mathbf{c}_j)^d
+\right), \quad d \in \{u, v\},
+\]
+where $\mathrm{wrap}(\cdot)$ maps to $[-\tfrac{1}{2}, \tfrac{1}{2})$.
+The total cost minimised is
+\[
+C = \sum_{\substack{s \in \mathcal{S} \\ w_s > 0}}
+    w_s \sum_{(a,b) \in s} \left\|\mathbf{r}_{ab}\right\|^2.
 \]
 
-Phase is evaluated modulo one.
+This least-squares problem is solved with the Levenberg--Marquardt algorithm
+using finite-difference Jacobians.
+The resulting corrections are applied to the patch vertices before nesting,
+so all subsequent phase evaluations operate in the corrected coordinate frame.
+
+\subsection{Texture Phase Evaluation}
+
+The texture lattice is defined by the basis $B = \{\mathbf{u}, \mathbf{v}\}$,
+where $\mathbf{u}$ and $\mathbf{v}$ are the lattice vectors encoding the two periodic axes,
+with the matrix form $[B] = [\mathbf{u} \mid \mathbf{v}] \in \mathbb{R}^{2 \times 2}$ used for computation.
+The 2D lattice phase of a fabric point $\mathbf{x} \in \mathbb{R}^2$ is
+\[
+\mathrm{Phase}(\mathbf{x}) = \mathrm{frac}(B^{-1}\mathbf{x}) \in [0,1)^2,
+\]
+where $\mathrm{frac}(\cdot)$ is applied component-wise.
+
+For chart $p_i$, the kappa offset shifts the phase uniformly along both lattice axes:
+\[
+\mathrm{Phase}_i(\mathbf{x}) =
+\mathrm{frac}\!\left(\mathrm{Phase}(\mathbf{x}) + \frac{\kappa_i}{K}\mathbf{1}\right) \in [0,1)^2,
+\]
+where $\mathbf{1} = (1,1)^T$.
+
+For wallpaper groups with periodicity in only one direction (e.g.\ stripes),
+the pattern is translation-invariant along the stripe axis.
+The corresponding phase component is identical for all fabric points,
+so its contribution to any phase difference is zero;
+the mismatch then reduces to the single perpendicular component.
 
 \paragraph{Wrapped Phase Difference}
 
-Given two phases $\phi_a$ and $\phi_b$ in $[0,1)$,
-their wrapped difference is defined as
-
+Given two 2D phases $\boldsymbol{\phi}_a, \boldsymbol{\phi}_b \in [0,1)^2$,
+the wrapped difference per axis is
 \[
-\Delta(\phi_a, \phi_b)
-=
-\min\left(
-|\phi_a - \phi_b|,
-1 - |\phi_a - \phi_b|
-\right).
+\delta^d(\boldsymbol{\phi}_a, \boldsymbol{\phi}_b)
+= \min\!\left(|\phi_a^d - \phi_b^d|,\; 1 - |\phi_a^d - \phi_b^d|\right),
+\quad d \in \{u, v\},
+\]
+and the overall per-point mismatch is their mean:
+\[
+\Delta(\boldsymbol{\phi}_a, \boldsymbol{\phi}_b)
+= \tfrac{1}{2}\bigl(
+    \delta^u(\boldsymbol{\phi}_a, \boldsymbol{\phi}_b)
+  + \delta^v(\boldsymbol{\phi}_a, \boldsymbol{\phi}_b)
+\bigr).
 \]
 
 \subsection{Seam Phase Mismatch}
@@ -158,41 +271,46 @@ The seam phase mismatch is defined as
 =
 \frac{1}{L_s}
 \int_0^{L_s}
-\Delta(
-\mathrm{Phase}_i(\mathbf{x}_i(l)),
+\Delta_{\mathcal{G}}\!\bigl(
+\mathrm{Phase}_i(\mathbf{x}_i(l)),\,
 \mathrm{Phase}_j(\mathbf{x}_j(l))
-)
+\bigr)
 \, dl.
 \]
 
 \subsection{Objective Functions}
 
-The fitness vector is
-
+Each objective is scaled by a designer-specified weight, giving the fitness vector
 \[
-\mathbf{F}(\mathbf{x}) = [f_1, f_2, f_3]^T.
+\mathbf{F}(\mathbf{x}) = [w_1 f_1,\; w_2 f_2,\; w_3 f_3]^T,
 \]
+where $w_1, w_2, w_3 \geq 0$ allow prioritising individual objectives.
+All three components are minimised.
 
 \paragraph{Fabric Efficiency}
 
 \[
 f_1(\mathbf{x}) =
-\max_{p \in \text{Layout}} y_{max}(p).
+\frac{1}{W}\max_{p \in \text{Layout}} y_{\max}(p),
 \]
+where $W$ is the fabric width, so $f_1$ is a dimensionless ratio of
+layout height to fabric width.
 
 \paragraph{Texture Phase Discontinuity}
 
 \[
 f_2(\mathbf{x}) =
-\sum_{s \in \mathcal{S}_{adj}}
+\sum_{s \in \mathcal{S}}
 w_s \cdot \mathrm{Mismatch}(s).
 \]
 
-\paragraph{Flattening Distortion}
+\paragraph{Fit Distortion}
 
 \[
 f_3(\mathbf{x}) =
-\sum_{i=1}^n E_{iso}(\phi_i).
+\frac{1}{n} \sum_{i=1}^n \overline{\sigma}_i^{\,\mathrm{weft}},
 \]
+where $\overline{\sigma}_i^{\,\mathrm{weft}}$ is the mean local triangle stretch deviation
+along the weft direction between corresponding 2D and 3D triangles of chart $p_i$.
 
 \end{document}
