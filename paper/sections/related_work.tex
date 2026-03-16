@@ -1,0 +1,92 @@
+\section{Related Work}
+\label{sec:related_work}
+
+% ---------------------------------------------------------------------------
+\subsection{Garment Pattern Nesting}
+\label{sec:rw_nesting}
+
+The problem of placing irregularly shaped panels on a strip to minimise
+wasted material is known as the irregular strip packing or nesting problem.
+Bennell and Oliveira~\cite{BennellO08} provide a comprehensive tutorial
+covering the principal geometric tools, from raster methods to the
+no-fit polygon (NFP).
+The NFP, which characterises all valid non-overlapping placements of one
+polygon relative to another, underpins many state-of-the-art nesting
+solvers~\cite{BurkeHKW07}.
+Burke et al.~\cite{BurkeHKW06} introduce the bottom-left-fill heuristic,
+which places each piece at the lowest, leftmost feasible position on the
+strip; this heuristic forms the basis of our nesting engine.
+
+Metaheuristic approaches have been widely applied to nesting.
+Jakobs~\cite{Jakobs96} introduces one of the first genetic algorithm
+formulations for polygon packing, encoding placement order as a permutation.
+Heckmann and Lengauer~\cite{HeckmannL95} address the textile industry
+specifically with simulated annealing, demonstrating the practical relevance
+of metaheuristics for garment nesting under industrial constraints.
+Gomes and Oliveira~\cite{GomesO06} combine simulated annealing with linear
+programming to improve local compaction, achieving significant gains on
+standard benchmarks.
+
+All of the above methods treat texture as irrelevant: panels are placed
+purely for geometric compactness with no regard for pattern continuity
+across seams.
+NFP-based solvers represent the state of the art for fabric efficiency
+alone; our nesting component deliberately uses a simpler heuristic because
+the complexity of our problem lies in the joint objectives, and any
+NFP-based engine could in principle be substituted without affecting the
+other contributions.
+
+% ---------------------------------------------------------------------------
+\subsection{Texture and Pattern Alignment}
+\label{sec:rw_texture}
+
+Ko and Kim~\cite{Ko2013} address nesting on figured (patterned) fabric using
+image analysis and 3D drape simulation to preserve figure continuity across
+pieces.
+Their approach jointly considers placement and pattern matching, but is
+limited to simple repeat patterns and does not handle the full symmetry
+structure of periodic textures.
+
+Wolff and Sorkine-Hornung~\cite{WolffS19} present the most comprehensive
+prior work on seam-aware texture alignment in garments.
+They formalise the alignment problem using all 17 wallpaper groups and
+optimise the placement of sewing pattern pieces to minimise phase mismatch
+along seams, with optional deformation of the seam shapes themselves.
+A follow-up~\cite{WolffHS19} extends this framework to enforce body
+reflection symmetry constraints on both texture alignment and seam shape.
+
+While this line of work establishes the formal foundations for wallpaper
+group alignment, it assumes an unbounded fabric supply and ignores material
+efficiency entirely.
+Furthermore, by operating directly on 2D patch geometry, any deformation
+introduced to improve alignment implicitly modifies the garment fit, with
+no mechanism to measure or bound this change.
+Our method addresses both limitations: fabric roll constraints and material
+efficiency are explicit objectives, and fit deviation is quantified and
+minimised as a separate objective rather than treated as a side effect.
+
+% ---------------------------------------------------------------------------
+\subsection{Multi-Objective Evolutionary Algorithms and Mixed-Type Genotypes}
+\label{sec:rw_moea}
+
+The seminal NSGA-II algorithm~\cite{Deb2002NSGAII} establishes the standard
+framework for Pareto-based multi-objective optimisation with tournament
+selection: candidate solutions are compared by dominance, with a
+crowding-distance tiebreaker to maintain diversity.
+We adopt a simplified variant of this selection scheme, using fitness sum
+as the tiebreaker in place of crowding distance, which is sufficient for
+our three-objective problem.
+
+The mixed structure of our genotype (continuous seam parameters, discrete
+orientations and phase offsets, and a combinatorial nesting order) requires
+dedicated operators per variable type.
+Michalewicz~\cite{Michalewicz1996} establishes the foundational treatment
+of mixed-type chromosomes in evolutionary computation, arguing that each
+variable type benefits from operators that respect its domain structure.
+Li et al.~\cite{LiEEBSDR13} formalise this principle in Mixed Integer
+Evolution Strategies (MIES), defining separate self-adaptive mutation
+operators for continuous, integer, and nominal discrete variables within
+a unified algorithm.
+Our design follows this principle: Gaussian perturbation for the continuous
+seam parameters, uniform resampling for the discrete phase and orientation
+variables, and swap mutation for the permutation-valued nesting order.

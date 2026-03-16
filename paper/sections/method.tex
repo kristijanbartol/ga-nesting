@@ -1,0 +1,318 @@
+\section{Method}
+\label{sec:method}
+
+We formulate garment pattern layout as a mixed-type optimisation problem
+and solve it with a multi-objective genetic algorithm.
+The pipeline maps a genotype encoding seam positions, patch orientations,
+texture phase offsets, and nesting parameters to a fabric layout,
+which is then scored by three objectives: fabric efficiency,
+texture alignment across seams, and garment fit quality.
+
+% ---------------------------------------------------------------------------
+\subsection{Problem Formulation}
+\label{sec:formulation}
+
+We define the problem as
+\[
+\Psi = \langle M, \mathcal{T}, \mathcal{L}, \mathbf{w}, \Omega \rangle,
+\]
+where $M = (V, E, F)$ is the 3D garment mesh,
+$\mathcal{T}$ is a periodic fabric texture characterised by a lattice basis
+$B = \{\mathbf{u}, \mathbf{v}\}$,
+$\mathcal{L} = \{L_1, \dots, L_m\}$ is a set of admissible quad regions on
+the mesh surface that constrain where seam keypoints may be placed,
+$\mathbf{w} = \{w_s\}_{s \in \mathcal{S}}$ are static per-seam importance
+weights ($w_s \in [0,1]$, set to zero for boundary seams),
+and $\Omega = [0, W] \times [0, \infty)$ is the fabric roll domain of
+width $W$.
+
+% ---------------------------------------------------------------------------
+\subsection{Texture Symmetry: Wallpaper Groups}
+\label{sec:wallpaper}
+
+The periodic structure of a fabric texture is fully characterised by its
+wallpaper group $\mathcal{G}$, which encodes all translational, rotational,
+and reflective symmetries of the pattern.
+Accounting for $\mathcal{G}$ is essential for two reasons.
+First, it constrains which grain-rotation pairs $(\rho_i, \rho_j)$ of adjacent
+patches can produce a valid seam alignment: for a stripe pattern, rotating one
+patch by 90° makes alignment impossible regardless of placement.
+Second, patterns with glide-reflection symmetry (e.g.\ herringbone, chevron)
+allow patches to align via a reflected copy of the texture, which must be
+accounted for in the mismatch computation.
+
+We support eight groups, summarised in Table~\ref{tab:wallpaper}.
+
+\begin{table}[t]
+\centering
+\caption{Supported wallpaper groups with seam compatibility rules.}
+\label{tab:wallpaper}
+\begin{tabular}{llll}
+\toprule
+Group & Name & Pattern & Seam compatibility \\
+\midrule
+PM  & stripes          & horizontal stripes    & $\rho_i \equiv \rho_j \pmod{2}$ \\
+PM  & diagonal stripes & stripes at 45°        & $\rho_i \equiv \rho_j \pmod{2}$ \\
+PMM & grid             & check / plaid         & all pairs \\
+P4  &                  & 4-fold rotation       & all pairs \\
+P4M &                  & 4-fold + mirrors      & all pairs \\
+PG  & herringbone      & glide reflection only & $\rho_i \equiv \rho_j \pmod{2}$ \\
+PMG & chevron          & mirror + glide        & $\rho_i \equiv \rho_j \pmod{2}$ \\
+PGG & brick bond       & two glide axes        & $\rho_i \equiv \rho_j \pmod{2}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+If $\mathcal{G}$ declares $(\rho_i, \rho_j)$ incompatible, the pair receives
+a hard penalty in $f_2$.
+For groups with glide-reflection symmetry (PG, PMG, PGG), each group defines
+glide maps $\mathcal{G}_s = \{g_1, \dots\}$ acting on fractional phase
+coordinates, and the per-point mismatch takes the minimum over the identity
+and all glide images:
+\[
+\Delta_{\mathcal{G}}(\boldsymbol{\phi}_a, \boldsymbol{\phi}_b)
+= \min\!\Bigl(
+    \Delta(\boldsymbol{\phi}_a, \boldsymbol{\phi}_b),\;
+    \min_{g \in \mathcal{G}_s} \Delta(\boldsymbol{\phi}_a, g(\boldsymbol{\phi}_b))
+  \Bigr).
+\]
+For groups without glide symmetry, $\mathcal{G}_s = \emptyset$ and
+$\Delta_{\mathcal{G}} = \Delta$.
+
+% ---------------------------------------------------------------------------
+\subsection{Genotype: Decision Variables}
+\label{sec:genotype}
+
+A candidate solution is encoded as
+\[
+\mathbf{x} =
+\langle
+\boldsymbol{\delta},\,
+\boldsymbol{\rho},\,
+\boldsymbol{\kappa},\,
+\pi,\,
+h,\,
+\lambda_s
+\rangle.
+\]
+
+\paragraph{Seam topology ($\boldsymbol{\delta}$).}
+Each landmark region $L_j$ is a topological quad on the mesh surface defined
+by four corner vertices.
+The position of seam keypoint $k_j$ within $L_j$ is controlled by a 2D
+parameter:
+\[
+k_j = \Gamma_j(\boldsymbol{\delta}_j), \quad
+\boldsymbol{\delta}_j = (u_j, v_j) \in [0,1]^2,
+\]
+where $\Gamma_j$ performs bilinear interpolation within $L_j$ followed by a
+snap to the nearest mesh vertex.
+The full vector $\boldsymbol{\delta} \in [0,1]^{2m}$ concatenates all
+landmark coordinates.
+Seams $s \in \mathcal{S}$ are computed as geodesics between corresponding
+keypoints.
+Restricting keypoints to semantically defined regions prevents degenerate cuts
+while still allowing the EA to explore meaningful seam placements.
+
+\paragraph{Fabric orientation ($\boldsymbol{\rho}$).}
+Cutting along seams yields $n$ 2D charts $P(\boldsymbol{\delta}) = \{p_1, \dots, p_n\}$.
+Each chart is assigned a discrete grain orientation
+\[
+\rho_i \in \{0,1,2,3\}, \quad \theta_i = \rho_i \frac{\pi}{2},
+\]
+which determines how the chart is rotated on the fabric roll.
+Compatibility with $\mathcal{G}$ is enforced at evaluation time.
+
+\paragraph{Texture phase offsets ($\boldsymbol{\kappa}$).}
+Because the fabric texture repeats periodically, placing a chart at different
+positions that are integer multiples of the period apart produces
+indistinguishable results.
+We exploit this freedom by assigning each chart a discrete phase bin
+\[
+\kappa_i \in \{0,1,\dots,K-1\},
+\]
+where $K$ is the number of bins per period.
+The bin determines a fractional offset $\kappa_i / K$ applied uniformly along
+both lattice axes, effectively choosing which repeat of the texture the chart
+is placed on.
+Optimising $\boldsymbol{\kappa}$ allows the EA to align stripe or grid bands
+across seams without moving the patches on the fabric.
+
+\paragraph{Parameterization hyperparameter ($\lambda_s$).}
+The seam straightness weight
+\[
+\lambda_s \in \{2^0, 2^1, \dots, 2^7\}
+\]
+controls the strength of the regularization term in the parameterization
+energy that encourages seam boundaries to be straight lines in 2D.
+It is applied uniformly across all seams.
+
+\paragraph{Nesting variables ($\pi, h$).}
+The permutation $\pi \in S_n$ defines the order in which charts are placed
+on the fabric, and $h \in \mathcal{H}$ ($|\mathcal{H}|=3$) selects the
+bottom-left placement heuristic variant.
+
+% ---------------------------------------------------------------------------
+\subsection{Phenotype: From Genotype to Layout}
+\label{sec:phenotype}
+
+\subsubsection{Seam Cutting and Parameterization.}
+Given $\boldsymbol{\delta}$, the keypoints $\{k_j\}$ are computed via
+bilinear interpolation and snapped to mesh vertices.
+Geodesic paths between corresponding keypoints define the seam network,
+along which the mesh is cut to yield 3D patches.
+Each patch is then flattened to 2D by LSCM parameterization, with a
+seam-straightness regularization weighted by $\lambda_s$.
+
+\subsubsection{Stage 2: Global Phase Alignment.}
+\label{sec:stage2}
+After parameterization, patches connected by seams with $w_s > 0$ form
+connected components.
+Within each component a small translational correction $\mathbf{c}_i \in \mathbb{R}^2$
+is found per patch (root fixed at $\mathbf{c}_i = \mathbf{0}$) by minimising
+the total seam phase residual:
+\[
+C = \sum_{\substack{s \in \mathcal{S} \\ w_s > 0}}
+    w_s \sum_{(a,b) \in s} \left\|\mathbf{r}_{ab}\right\|^2,
+\]
+where the signed wrapped residual per axis is
+\[
+r^d_{ab}
+= \mathrm{wrap}\!\left(
+    \mathrm{Phase}_i(\mathbf{x}_a + \mathbf{c}_i)^d
+  - \mathrm{Phase}_j(\mathbf{x}_b + \mathbf{c}_j)^d
+\right), \quad d \in \{u,v\},
+\]
+and $\mathrm{wrap}(\cdot)$ maps to $[-\tfrac{1}{2},\tfrac{1}{2})$.
+This is solved with Levenberg--Marquardt using finite-difference Jacobians.
+The corrections are baked into the patch vertices before nesting.
+
+\subsubsection{Nesting.}
+Each chart is rotated by $R(\theta_i)$ and placed on the fabric roll using
+heuristic $h$ in order $\pi$.
+Placements are snapped to the texture lattice so that the absolute position
+on the roll does not introduce an uncontrolled phase offset.
+Charts must satisfy non-overlap and containment constraints:
+\begin{align}
+(\phi_i(p_i) + \mathbf{t}_i) \cap (\phi_j(p_j) + \mathbf{t}_j) &= \emptyset, \\
+(\phi_i(p_i) + \mathbf{t}_i) &\subset \Omega.
+\end{align}
+
+% ---------------------------------------------------------------------------
+\subsection{Objective Functions}
+\label{sec:objectives}
+
+The fitness vector is
+\[
+\mathbf{F}(\mathbf{x}) = [w_1 f_1,\; w_2 f_2,\; w_3 f_3]^T,
+\]
+where $w_1, w_2, w_3 \geq 0$ are designer-specified weights and all three
+components are minimised.
+
+\paragraph{Fabric efficiency ($f_1$).}
+\[
+f_1(\mathbf{x}) = \frac{1}{W} \max_{p \in \text{Layout}} y_{\max}(p).
+\]
+Normalising by $W$ makes $f_1$ dimensionless and comparable to $f_2$
+regardless of the physical scale of the fabric.
+
+\paragraph{Texture alignment ($f_2$).}
+The 2D lattice phase of a fabric point $\mathbf{x}$ is
+\[
+\mathrm{Phase}(\mathbf{x}) = \mathrm{frac}([B]^{-1}\mathbf{x}) \in [0,1)^2,
+\]
+where $[B] = [\mathbf{u} \mid \mathbf{v}]$ and $\mathrm{frac}(\cdot)$ is
+applied component-wise.
+For chart $p_i$, the kappa offset shifts the phase uniformly:
+\[
+\mathrm{Phase}_i(\mathbf{x}) =
+\mathrm{frac}\!\left(\mathrm{Phase}(\mathbf{x}) + \frac{\kappa_i}{K}\mathbf{1}\right),
+\quad \mathbf{1} = (1,1)^T.
+\]
+For stripe groups, the pattern is translation-invariant along the stripe axis,
+so that phase component contributes zero to any difference.
+The per-point mismatch between two phases is
+\[
+\Delta(\boldsymbol{\phi}_a, \boldsymbol{\phi}_b)
+= \tfrac{1}{2}\bigl(
+    \delta^u(\boldsymbol{\phi}_a, \boldsymbol{\phi}_b)
+  + \delta^v(\boldsymbol{\phi}_a, \boldsymbol{\phi}_b)
+\bigr),
+\quad
+\delta^d = \min\!\left(|\phi_a^d - \phi_b^d|,\; 1 - |\phi_a^d - \phi_b^d|\right).
+\]
+The seam mismatch integrates this over each seam arc-length:
+\[
+\mathrm{Mismatch}(s)
+= \frac{1}{L_s} \int_0^{L_s}
+  \Delta_{\mathcal{G}}\!\bigl(
+    \mathrm{Phase}_i(\mathbf{x}_i(l)),\,
+    \mathrm{Phase}_j(\mathbf{x}_j(l))
+  \bigr)\, dl,
+\]
+and $f_2$ accumulates this over all seams weighted by importance:
+\[
+f_2(\mathbf{x}) = \sum_{s \in \mathcal{S}} w_s \cdot \mathrm{Mismatch}(s).
+\]
+
+\paragraph{Fit distortion ($f_3$).}
+\[
+f_3(\mathbf{x}) = \frac{1}{n} \sum_{i=1}^n \overline{\sigma}_i^{\,\mathrm{weft}},
+\]
+where $\overline{\sigma}_i^{\,\mathrm{weft}}$ is the mean local triangle
+stretch deviation along the weft direction between corresponding 2D and 3D
+triangles of chart $p_i$.
+
+% ---------------------------------------------------------------------------
+\subsection{Evolutionary Algorithm}
+\label{sec:ea}
+
+The mixed structure of the genotype — continuous ($\boldsymbol{\delta}$),
+discrete ($\boldsymbol{\rho}, \boldsymbol{\kappa}, \lambda_s, h$),
+and combinatorial ($\pi$) — motivates a genetic algorithm with
+variable-specific operators rather than a standard real-valued EA.
+
+\paragraph{Selection.}
+Tournament selection with tournament size $k=3$ is used.
+The primary criterion is Pareto dominance: a candidate $\mathbf{x}$ dominates
+$\mathbf{y}$ if $\mathbf{F}(\mathbf{x}) \leq \mathbf{F}(\mathbf{y})$
+component-wise with at least one strict inequality.
+When neither candidate dominates the other, the fallback criterion is the
+scalar sum $\sum_i w_i f_i$, which provides a consistent total order
+without discarding multi-objective information.
+
+\paragraph{Crossover.}
+Applied with probability $p_c$.
+Each variable type uses a dedicated operator:
+\begin{itemize}
+    \item $\boldsymbol{\delta}, \boldsymbol{\rho}, \boldsymbol{\kappa}$:
+          uniform gene-wise swap — each gene is exchanged between parents
+          independently with probability $\tfrac{1}{2}$.
+    \item $\pi$: whole-permutation inheritance — one parent's permutation is
+          copied in full (chosen by coin flip) to preserve permutation validity.
+    \item $h, \lambda_s$: coin flip between the two parent values.
+\end{itemize}
+
+\paragraph{Mutation.}
+Applied with probability $p_m$ after crossover.
+Each variable type uses a dedicated operator:
+\begin{itemize}
+    \item $\boldsymbol{\delta}$: Gaussian perturbation
+          $\delta_j \leftarrow \mathrm{clip}(\delta_j + \mathcal{N}(0, \sigma_\delta),\,
+          \delta_{\min}, \delta_{\max})$,
+          where $[\delta_{\min}, \delta_{\max}] \subset [0,1]$ avoids
+          geometrically degenerate mesh regions.
+    \item $\boldsymbol{\kappa}$: each bin resampled uniformly from
+          $\{0,\dots,K{-}1\}$ with per-gene probability $p_\kappa$.
+    \item $\boldsymbol{\rho}$: each value resampled from $\{0,1,2,3\}$
+          with per-gene probability $p_\rho$.
+    \item $\pi$: swap of two randomly chosen positions with probability
+          $p_\pi$, preserving permutation validity.
+    \item $h$: resampled uniformly from $\mathcal{H}$ with probability $p_h$.
+    \item $\lambda_s$: resampled uniformly from $\{2^0,\dots,2^7\}$
+          with probability $p_{\lambda}$.
+\end{itemize}
+
+\paragraph{Elitism.}
+The single best individual (by fitness sum) is carried over unchanged to the
+next generation, ensuring monotone improvement of the best solution found.

@@ -1,0 +1,63 @@
+\section{Experiments}
+\label{sec:experiments}
+
+% ---------------------------------------------------------------------------
+\subsection{Baselines}
+\label{sec:baselines}
+
+We compare against two baselines, both of which fix all seam positions at the
+midpoints of their respective landmark quads ($\boldsymbol{\delta} = 0.5$)
+and skip the Stage~2 global phase alignment.
+
+\paragraph{B0: Pure greedy nesting.}
+All phase offsets are set to zero ($\boldsymbol{\kappa} = \mathbf{0}$),
+all patches are placed without rotation ($\boldsymbol{\rho} = \mathbf{0}$),
+and patches are nested in descending order of area using the bottom-left
+heuristic.
+This baseline is representative of the classical nesting approach used in
+industry, which optimises fabric efficiency with no texture awareness.
+
+\paragraph{B1: Greedy seam-order nesting with greedy phase selection.}
+Patches are placed in breadth-first order over the seam adjacency graph,
+starting from the largest patch in each connected component.
+This ordering ensures that when a patch is placed, most of its seam
+neighbours have already been assigned a phase offset.
+The phase offset $\kappa_i$ for each patch is then chosen greedily by
+exhaustively evaluating all $K$ candidates and selecting the one that
+minimises the total weighted mismatch with already-placed seam neighbours.
+Grain orientations remain fixed at $\boldsymbol{\rho} = \mathbf{0}$.
+This baseline captures the best texture alignment achievable by a greedy
+strategy without global optimisation or seam-position search.
+
+% ---------------------------------------------------------------------------
+\subsection{Implementation Details}
+\label{sec:implementation}
+
+% TODO: population size, generations, elite count, tournament k,
+%       crossover prob, mutation prob, per-variable mutation rates,
+%       delta range [delta_lo, delta_hi], sigma_delta, K,
+%       fabric width, period_u/v, hardware, runtime.
+
+% ---------------------------------------------------------------------------
+\subsection{Results}
+\label{sec:results}
+
+% Main results: full model (w1, w2, w3 all active) vs. B0 and B1.
+% Report aggregate fitness and per-objective scores (f1, f2, f3) across
+% all garment types. Qualitative visualisations of fabric layouts and
+% seam phase mismatch maps.
+
+% TODO
+
+% ---------------------------------------------------------------------------
+\subsection{Ablation Study}
+\label{sec:ablation}
+
+% Decompose the loss function by varying weights (w1, w2, w3).
+% Show the trade-off surface: fabric efficiency vs. texture alignment vs.
+% fit preservation. Demonstrate that the full three-objective formulation
+% outperforms any single- or two-objective variant.
+% Justify the use of the GA over greedy baselines by showing that B1
+% saturates early while the GA continues to improve the joint objective.
+
+% TODO

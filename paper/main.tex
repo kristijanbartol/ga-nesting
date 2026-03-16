@@ -1,0 +1,72 @@
+\documentclass[runningheads]{llncs}
+
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,calc}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\graphicspath{{figures/}}
+
+\begin{document}
+
+\title{Pattern Layout Optimization for Seam-Aware Texture Alignment}
+
+\author{
+    First Author\inst{1} \and
+    Second Author\inst{2}
+}
+
+\authorrunning{F. Author et al.}
+
+\institute{
+    Institute One, City, Country \email{first@example.com} \and
+    Institute Two, City, Country \email{second@example.com}
+}
+
+\maketitle
+
+\begin{abstract}
+Placing 2D garment panels on a fabric roll efficiently is a well-studied
+combinatorial optimisation problem, yet existing methods treat the fabric
+texture as irrelevant and ignore whether periodic patterns such as stripes
+or checks align across the seams of the assembled garment.
+Prior work on texture alignment assumes an unbounded fabric supply and
+operates by directly deforming 2D patch shapes, leaving fit changes implicit
+and unmeasured.
+We propose a joint optimisation framework that simultaneously minimises
+fabric consumption, seam-wise texture misalignment, and garment fit
+deviation.
+Seam positions are optimised directly on the 3D body mesh, so that fit
+changes are grounded in 3D geometry and can be explicitly measured and
+minimised.
+We model the periodic structure of the fabric via wallpaper symmetry groups,
+supporting a range of patterns including those with glide-reflection symmetry
+such as herringbone, chevron, and brick bond.
+The problem is solved with a genetic algorithm that accommodates the mixed
+nature of the genotype: continuous seam parameters, discrete orientation and
+phase offsets, and a combinatorial nesting order, each with dedicated
+crossover and mutation operators.
+We introduce two baselines and evaluate the method on TODO garment types
+with layouts of up to TODO pattern pieces.
+Qualitative and quantitative comparisons against the baselines demonstrate
+the benefit of the genetic algorithm and show scalability and robustness
+across garment categories.
+\keywords{garment pattern nesting \and texture alignment \and evolutionary algorithm \and wallpaper groups \and seam optimisation}
+\end{abstract}
+
+\input{sections/introduction}
+\input{sections/related_work}
+\input{sections/method}
+\input{sections/experiments}
+\input{sections/conclusion}
+
+\bibliographystyle{splncs04}
+\bibliography{refs}
+
+\end{document}

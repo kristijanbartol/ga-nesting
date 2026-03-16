@@ -1,0 +1,67 @@
+\section{Introduction}
+\label{sec:introduction}
+
+The global apparel industry generates substantial fabric waste,
+a significant portion of which arises from inefficient placement of 2D garment
+panels (commonly called \emph{pattern pieces}) on the fabric roll prior
+to cutting.
+The task of arranging these panels to minimise wasted material is known as
+\emph{nesting} (or \emph{marker making}), and has been extensively studied as
+a combinatorial optimisation problem~\cite{BennellO08}.
+Classical nesting methods, as well as the prevailing industry standard,
+treat texture as irrelevant: panels are placed purely for compactness,
+with no regard for whether the fabric pattern (stripes, checks, herringbone,
+or other periodic motifs) continues seamlessly across the seams of the
+assembled garment.
+
+The problem of aligning periodic textures along garment seams has been
+addressed by Wolff et al.~\cite{WolffS19}, who directly deform
+the 2D patch shapes to achieve alignment.
+Their formulation, however, assumes an unbounded fabric supply: roll width and
+material efficiency play no role, so the method is decoupled from the
+practical nesting problem.
+Furthermore, by operating directly on 2D patch geometry, fit changes induced
+by the deformation are implicit and go unmeasured. There is no mechanism
+to bound or quantify how much the modified pattern deviates from the
+originally designed garment.
+
+We argue that seam placement is best optimised in 3D, on the body surface,
+rather than by deforming flat patches.
+Moving a seam line on the body mesh changes the 2D pattern only as a
+consequence of flattening, keeping the modification grounded in 3D geometry.
+Critically, this makes fit deviation explicit: the difference between
+the flattened and the original 3D surface can be directly measured and
+minimised as part of the optimisation.
+We formalise this observation and build on it to define a joint optimisation
+problem that simultaneously addresses fabric efficiency, seam-aware texture
+alignment, and fit preservation, objectives that have not previously been
+considered together.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+    \item We formulate garment pattern layout as a joint optimisation over
+          seam positions, fabric efficiency, and texture alignment under
+          realistic fabric roll constraints, the first method to address
+          all three objectives simultaneously.
+
+    \item We propose a 3D-grounded seam optimisation paradigm in which fit
+          deviation is an explicit, measurable objective. In contrast to prior
+          2D patch deformation approaches, fit change is no longer implicit
+          and unmeasured.
+
+    \item We support texture alignment across a set of wallpaper symmetry
+          classes, including patterns with glide-reflection symmetry such as
+          herringbone, chevron, and brick bond.
+
+    \item We demonstrate scalability to layouts of up to TODO pattern pieces
+          and robustness across TODO garment types (shirts, pants, onesies,
+          and dresses).
+\end{enumerate}
+
+\paragraph{Outline.}
+Section~\ref{sec:related_work} reviews related work on nesting, texture
+alignment, and evolutionary approaches to garment optimisation.
+Section~\ref{sec:method} presents the problem formulation and the full
+optimisation pipeline.
+Section~\ref{sec:experiments} reports experimental results.
+Section~\ref{sec:conclusion} concludes.
