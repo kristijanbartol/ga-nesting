@@ -53,18 +53,44 @@
         },
 
         {
+            "name": "Generate panel2 (paper)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/paper/figures/gen_panel2_mesh.py",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
+            },
+            "console": "integratedTerminal"
+        },
+
+        {
+            "name": "Generate panel3 (paper)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/paper/figures/gen_panel3_layout.py",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
+            },
+            "console": "integratedTerminal"
+        },
+
+        {
             "name": "Run GA",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/run_ga.py",
             "args": [
-                "--garment", "upper",
-                "--wallpaper", "pg",
-                "--pop", "10",
-                "--gens", "1",
+                "--garment", "lower",
+                "--wallpaper", "stripes",
+                "--pop", "50",
+                "--gens", "5",
+                "--num_bodies", "1",
                 "--seed", "0",
                 "--w1", "1.0",
-                "--w2", "10.0"
+                "--w2", "10.0",
+                "--w4", "0.0"
             ],
             "cwd": "${workspaceFolder}",
             "env": {

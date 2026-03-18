@@ -9,3 +9,14 @@ potpourri3d/
 *.ply
 *.png
 results/
+
+# latex
+**.bbl
+**.out
+**.pdf
+**.log
+**.fls
+**.fdb**
+**.aux
+**.blg
+**synctex**

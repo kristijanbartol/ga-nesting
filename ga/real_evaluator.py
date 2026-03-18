@@ -31,6 +31,24 @@ def _rho_rotate_verts(verts_xy: np.ndarray, rho: int) -> np.ndarray:
     return verts_xy @ R.T
 
 
+def _load_patch_areas_3d(patches_3d_dir: str) -> dict[str, float]:
+    """
+    Load 3D surface areas (in mesh native units²) for each patch from
+    data/patches/{garment_part}/patch_*/ref.ply.
+    Returns {patch_dirname: area}, e.g. {"patch_00": 0.042, ...}.
+    """
+    areas: dict[str, float] = {}
+    if not os.path.isdir(patches_3d_dir):
+        return areas
+    for dname in sorted(os.listdir(patches_3d_dir)):
+        ref_ply = os.path.join(patches_3d_dir, dname, "ref.ply")
+        if not os.path.exists(ref_ply):
+            continue
+        m = trimesh.load(ref_ply, process=False)
+        areas[dname] = float(m.area)
+    return areas
+
+
 def _parse_patch_id(patch_dirname: str) -> int:
     m = re.search(r"patch_(\d+)", patch_dirname)
     if not m:
@@ -101,6 +119,7 @@ class RealEvaluatorConfig:
     w1: float = 1.0  # fabric height
     w2: float = 1.0  # seam phase mismatch
     w3: float = 0.0  # flattening distortion (stub)
+    w4: float = 0.0  # patch area deviation from baseline (fit preservation)
 
 
 class RealEvaluator:
@@ -124,9 +143,9 @@ class RealEvaluator:
         )
         self.policy = get_policy(cfg.wallpaper_group)
 
-        # 2) Baseline delta: fixed middle of each landmark quad, same as test_geometry.py
-        # instance.num_landmarks landmarks => delta_uv length = 2*num_landmarks
-        self.delta_baseline = np.array([0.5, 0.5] * self.instance.num_landmarks, dtype=float)
+        # 2) Baseline delta: fixed middle of each sampled landmark quad.
+        # Derived landmarks do not consume delta slots, so size = 2*num_sampled_landmarks.
+        self.delta_baseline = np.array([0.5, 0.5] * self.instance.num_sampled_landmarks, dtype=float)
 
         # 3) Run geometry blackbox ONCE to generate results/pattern/latest and data/seamlines
         run_geometry_blackbox_timeout(self.instance, self.mesh, self.delta_baseline, garment_part=cfg.garment_part)
@@ -167,12 +186,22 @@ class RealEvaluator:
             period_v=cfg.period_v_mm
         )
 
+        # 7) Baseline 3D patch areas for f4 (fit deviation).
+        # Computed from the baseline geometry run above; units are m² (SMPL native).
+        # The ratio in f4 is dimensionless so no scaling needed.
+        self._patches_3d_dir = f"data/patches/{cfg.garment_part}"
+        self.baseline_areas_3d = _load_patch_areas_3d(self._patches_3d_dir)
+        self._baseline_total_area = sum(self.baseline_areas_3d.values()) or 1.0
+
         print("[RealEvaluator] Initialized.")
         print(f"  patches: {self.patch_ids}  ({len(self.patch_ids)} total)")
         print(f"  seams:   {len(self.constraints)}")
         print(f"  fabric:  {cfg.fabric_width_mm:.0f}mm wide"
               f"  period={cfg.period_u_mm:.0f}x{cfg.period_v_mm:.0f}mm  K={cfg.K}")
-        print(f"  weights: w1(height)={cfg.w1}  w2(phase)={cfg.w2}  w3(distortion)={cfg.w3}")
+        print(f"  weights: w1(height)={cfg.w1}  w2(phase)={cfg.w2}"
+              f"  w3(distortion)={cfg.w3}  w4(fit)={cfg.w4}")
+        print(f"  baseline 3D patches: {len(self.baseline_areas_3d)}"
+              f"  total area={self._baseline_total_area:.4f}m²")
 
     def _weights_by_filename(self, seam_dir: str) -> dict:
         """Build {filename: importance} by extracting seam name from each file's name."""
@@ -254,7 +283,7 @@ class RealEvaluator:
         except Exception as e:
             print(f"         [geo] FAILED: {e} -> penalty fitness")
             penalty = 1e6 / self.cfg.fabric_width_mm  # normalised, same scale as f1_norm
-            return Fitness(np.array([self.cfg.w1 * penalty, self.cfg.w2 * penalty, 0.0], dtype=float))
+            return Fitness(np.array([self.cfg.w1 * penalty, self.cfg.w2 * penalty, 0.0, 0.0], dtype=float))
 
         # Importances already baked in via _weights_by_filename during load.
         weighted_constraints = list(constraints)
@@ -298,12 +327,12 @@ class RealEvaluator:
         except Exception as e:
             print(f"         [loader] FAILED: {e} -> penalty fitness")
             penalty = 1e6 / self.cfg.fabric_width_mm
-            return Fitness(np.array([self.cfg.w1 * penalty, self.cfg.w2 * penalty, 0.0], dtype=float))
+            return Fitness(np.array([self.cfg.w1 * penalty, self.cfg.w2 * penalty, 0.0, 0.0], dtype=float))
         base_items = sorted(base_items, key=_pid)
         if len(base_items) != len(self.patch_ids):
             print(f"         [loader] wrong patch count: got {len(base_items)}, expected {len(self.patch_ids)} -> penalty fitness")
             penalty = 1e6 / self.cfg.fabric_width_mm
-            return Fitness(np.array([self.cfg.w1 * penalty, self.cfg.w2 * penalty, 0.0], dtype=float))
+            return Fitness(np.array([self.cfg.w1 * penalty, self.cfg.w2 * penalty, 0.0, 0.0], dtype=float))
         num_base = len(base_items)
 
         # Apply Stage2 corrective transforms to base item geometry.
@@ -422,13 +451,31 @@ class RealEvaluator:
         f2 = f2_total / N  # average, scale-invariant across different N
 
         f3 = 0.0
+
+        # --- f4: 3D patch area deviation from baseline (fit preservation) ---
+        # Σ |area_i(δ) - area_i_baseline| / Σ area_i_baseline
+        # Dimensionless ratio in [0, ∞); 0 means no change from the intended fit.
+        current_areas = _load_patch_areas_3d(self._patches_3d_dir)
+        if current_areas and self.baseline_areas_3d:
+            f4 = sum(
+                abs(current_areas.get(k, 0.0) - self.baseline_areas_3d[k])
+                for k in self.baseline_areas_3d
+            ) / self._baseline_total_area
+        else:
+            f4 = 0.0
+
         # Normalise f1 by fabric width so both objectives are dimensionless and
         # w1 / w2 become true priority knobs rather than unit-conversion factors.
         # f1_norm ≈ 0.5–3.0  (fabric height as a multiple of fabric width)
         # f2      ≈ 0.0–0.5 per seam (phase mismatch, already normalised)
+        # f4      ≈ 0.0–0.1 typical (area deviation fraction)
         f1_norm = f1 / self.cfg.fabric_width_mm
         ind.meta["f1_height_mm"] = f1
         ind.meta["f2_phase"] = f2
+        ind.meta["f4_area_dev"] = f4
         print(f"         [geo={t_geo:.1f}s  stage2={t_stage2:.2f}s  nesting={t_nest:.2f}s]"
-              f"  f1={f1:.1f}mm  f2={f2:.4f}")
-        return Fitness(np.array([self.cfg.w1 * f1_norm, self.cfg.w2 * f2, self.cfg.w3 * f3], dtype=float))
+              f"  f1={f1:.1f}mm  f2={f2:.4f}  f4={f4:.4f}")
+        return Fitness(np.array(
+            [self.cfg.w1 * f1_norm, self.cfg.w2 * f2, self.cfg.w3 * f3, self.cfg.w4 * f4],
+            dtype=float,
+        ))

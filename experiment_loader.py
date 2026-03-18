@@ -16,7 +16,8 @@ def load_experiment(
     seam_lib: Dict[str, SeamDefinition],
     active_seam_names: List[str],
     texture: TextureSpec,
-    fabric_width: float
+    fabric_width: float,
+    derived_lm_specs: tuple = (),
 ) -> ProblemInstance:
     
     print(f"[Loader] Loading mesh from {mesh_path}...")
@@ -69,6 +70,7 @@ def load_experiment(
         active_seam_types=tuple(active_types),
         seam_names=tuple(ordered_seam_names),
         seam_importances=tuple(active_importances),
+        derived_lm_specs=derived_lm_specs,
     )
     
     return instance

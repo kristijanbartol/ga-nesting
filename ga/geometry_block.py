@@ -18,6 +18,7 @@ from geometry.parameterization import parameterize
 from geometry.landmarks import (
     CORE_LANDMARKS, LONG_LANDMARKS, SHOULDER_KPT_IDX,
     PANT_SEAMS, SHIRTLESS_SEAMS,
+    LOWER_MIDLINE_LANDMARKS, LOWER_DERIVED_MIDLINE,
 )
 
 
@@ -28,11 +29,16 @@ _GARMENT_CONFIGS = {
         "landmark_fn": lambda: {**CORE_LANDMARKS["Lower"], **LONG_LANDMARKS["Lower"]},
         "topology":    build_pant_topology,
         "active_seams": PANT_SEAMS,
+        # Midline landmarks are added after mirroring (not mirrored themselves).
+        "derived_landmarks": LOWER_MIDLINE_LANDMARKS,
+        "derived_lm_specs":  LOWER_DERIVED_MIDLINE,
     },
     "upper": {
         "landmark_fn": lambda: {**CORE_LANDMARKS["Upper"]},   # sleeveless: no sleeve landmarks
         "topology":    build_sleeveless_shirt_topology,
         "active_seams": SHIRTLESS_SEAMS,
+        "derived_landmarks": {},
+        "derived_lm_specs":  (),
     },
 }
 
@@ -51,6 +57,8 @@ def build_instance(
 
     mesh = trimesh.load(mesh_path, process=False)
     full_landmark_lib = generate_symmetric_landmarks(mesh, cfg["landmark_fn"]())
+    # Add midline (derived) landmarks directly — no mirroring needed.
+    full_landmark_lib.update(cfg.get("derived_landmarks", {}))
     seams = cfg["topology"](full_landmark_lib)
 
     texture_spec = TextureSpec("Stripes", period_u, period_v, wallpaper_group=wallpaper_group)
@@ -62,6 +70,7 @@ def build_instance(
         active_seam_names=cfg["active_seams"],
         texture=texture_spec,
         fabric_width=fabric_width,
+        derived_lm_specs=cfg.get("derived_lm_specs", ()),
     )
     return instance, mesh
 

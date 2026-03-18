@@ -57,7 +57,7 @@ mapper = LandmarkMapper(instance)
 # Create a dummy genotype geometry vector (delta)
 # 3 landmarks * 2 coords (u,v) = 6 floats
 # Let's try [0.5, 0.5] for all (should act like center of the quad)
-dummy_delta = np.array([0.5, 0.5] * instance.num_landmarks)
+dummy_delta = np.array([0.5, 0.5] * instance.num_sampled_landmarks)
 
 vertex_ids = mapper.map_genotype_to_vertices(dummy_delta)
 

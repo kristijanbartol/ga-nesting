@@ -15,7 +15,7 @@ class GAInstance:
     """
     num_patches: int
     K: int  # phase bins
-    num_landmarks: int = 0  # needed for delta dimensionality (2 * num_landmarks)
+    num_landmarks: int = 0  # sampled landmarks only; delta length = 2 * num_landmarks
     num_bodies: int = 1
 
     # Constrain delta sampling and mutation to [delta_lo, delta_hi] around the
@@ -50,12 +50,12 @@ class Genome:
 
 @dataclass
 class Fitness:
-    values: np.ndarray  # (3,) [f1,f2,f3], lower is better
+    values: np.ndarray  # (4,) [f1,f2,f3,f4], lower is better
 
     def __post_init__(self):
         self.values = np.asarray(self.values, dtype=float)
-        if self.values.shape != (3,):
-            raise ValueError("Fitness must be shape (3,)")
+        if self.values.shape != (4,):
+            raise ValueError("Fitness must be shape (4,)")
 
 
 @dataclass

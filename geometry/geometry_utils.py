@@ -31,36 +31,68 @@ class LandmarkMapper:
 
     def map_genotype_to_vertices(self, delta: np.ndarray) -> np.ndarray:
         """
+        Maps delta (u,v) coordinates to mesh vertex IDs.
+
+        Two-pass algorithm:
+          Pass 1 — sampled landmarks (is_derived=False): bilinear interpolation
+                   inside the boundary quad + KDTree snap.  Consumes delta slots
+                   in order; derived landmarks are skipped.
+          Pass 2 — derived landmarks (is_derived=True): vertex ID computed via
+                   find_midline_vidx using a reference landmark resolved in pass 1.
+
         Args:
-            delta: (2 * M) array of [u, v] coordinates.
+            delta: (2 * num_sampled_landmarks,) array of [u, v] per sampled landmark.
         Returns:
-            (M,) array of Global Vertex IDs.
+            (num_landmarks,) array of Global Vertex IDs (sampled + derived).
         """
-        resolved_indices = []
-        
+        resolved_indices = [None] * len(self.instance.active_landmarks)
+        name_to_vidx: dict = {}
+
+        # Build name → position lookup for pass 2
+        name_to_active_idx = {lm.name: i for i, lm in enumerate(self.instance.active_landmarks)}
+
+        # ── Pass 1: sampled landmarks ─────────────────────────────────────────
+        delta_slot = 0
         for i, lm in enumerate(self.instance.active_landmarks):
-            # 1. Extract u, v
-            u = delta[2*i]
-            v = delta[2*i+1]
-            
-            # 2. Get Corner Coordinates
+            if lm.is_derived:
+                continue
+
+            u = delta[2 * delta_slot]
+            v = delta[2 * delta_slot + 1]
+            delta_slot += 1
+
             c_ids = lm.boundary_corners
-            corners = self.vertices[list(c_ids)] # Shape (4, 3)
+            corners = self.vertices[list(c_ids)]          # (4, 3)
             p00, p10, p11, p01 = corners[0], corners[1], corners[2], corners[3]
-            
-            # 3. Bilinear Interpolation in 3D
-            # This effectively creates a "virtual quad" inside the mesh volume
+
             p_bottom = (1 - u) * p00 + u * p10
             p_top    = (1 - u) * p01 + u * p11
             p_target = (1 - v) * p_bottom + v * p_top
-            
-            # 4. Snap to nearest vertex globally
-            # Since p_target is weighted by corners, it is guaranteed 
-            # to be spatially close to the surface patch.
+
             _, global_id = self.global_tree.query(p_target)
-            
-            resolved_indices.append(global_id)
-            
+
+            resolved_indices[i] = int(global_id)
+            name_to_vidx[lm.name] = int(global_id)
+
+        # ── Pass 2: derived (midline) landmarks ───────────────────────────────
+        for derived_name, ref_name, is_front in self.instance.derived_lm_specs:
+            ref_vidx = name_to_vidx.get(ref_name)
+            if ref_vidx is None:
+                raise ValueError(
+                    f"Reference landmark '{ref_name}' not resolved before "
+                    f"derived landmark '{derived_name}'"
+                )
+            midline_vidx = find_midline_vidx(
+                self.vertices, self.instance.mesh_faces, ref_vidx, front=is_front
+            )
+            active_idx = name_to_active_idx.get(derived_name)
+            if active_idx is None:
+                raise ValueError(
+                    f"Derived landmark '{derived_name}' not found in active_landmarks"
+                )
+            resolved_indices[active_idx] = midline_vidx
+            name_to_vidx[derived_name] = midline_vidx
+
         return np.array(resolved_indices, dtype=np.int32)
 
 

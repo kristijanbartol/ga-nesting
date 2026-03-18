@@ -13,13 +13,23 @@ class LandmarkDefinition:
     """
     Definition of a semantic landmark region on the mesh surface.
     The region is defined as a topological quad projected onto the manifold.
+
+    Sampled landmarks (is_derived=False): vertex ID comes from bilinear
+    interpolation of delta inside boundary_corners.
+
+    Derived landmarks (is_derived=True): vertex ID is computed automatically
+    from a reference landmark (see ProblemInstance.derived_lm_specs) and does
+    not consume a delta genome slot.  boundary_corners is unused.
     """
     name: str
-    
+
     # The 4 corner vertices defining the region of interest (ROI).
     # Order: [Bottom-Left, Bottom-Right, Top-Right, Top-Left]
     # Corresponding to (0,0), (1,0), (1,1), (0,1) in the delta space.
     boundary_corners: Tuple[int, int, int, int]
+
+    # If True, vertex ID is derived from another landmark rather than sampled.
+    is_derived: bool = False
 
 class SeamPathType(Enum):
     GEODESIC = "geodesic"     # Standard shortest path (e.g., Side Seam)
@@ -102,9 +112,19 @@ class ProblemInstance:
     # Per-seam static importance weights (all seams, incl. DUAL with 0.0).
     seam_importances: Tuple[float, ...] = ()
 
+    # Derived landmark specs: each entry is (derived_name, reference_name, is_front).
+    # LandmarkMapper uses these to compute midline vertex IDs automatically.
+    derived_lm_specs: Tuple[Tuple[str, str, bool], ...] = ()
+
     @property
     def num_landmarks(self) -> int:
+        """Total active landmarks including derived ones."""
         return len(self.active_landmarks)
+
+    @property
+    def num_sampled_landmarks(self) -> int:
+        """Active landmarks that consume a delta genome slot (non-derived)."""
+        return sum(1 for lm in self.active_landmarks if not lm.is_derived)
 
     @property
     def num_seams(self) -> int:
@@ -120,7 +140,7 @@ class Genotype:
     The fixed-length vector representation optimized by the EA.
     """
     # 1. Geometry Parameters
-    # Dimensionality: 2 * num_landmarks
+    # Dimensionality: 2 * num_sampled_landmarks  (derived landmarks have no delta slot)
     # Structure: [u_0, v_0, u_1, v_1, ..., u_m, v_m]
     # Range: [0.0, 1.0]
     # Maps to a coordinate within the Quad Patch of the corresponding landmark.

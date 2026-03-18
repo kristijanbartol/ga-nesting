@@ -163,7 +163,7 @@ def main():
         fabric_width=FABRIC_WIDTH_MM / 1000.0,
         garment_type=GARMENT_TYPE,
     )
-    delta_baseline = np.array([0.5, 0.5] * instance.num_landmarks, dtype=float)
+    delta_baseline = np.array([0.5, 0.5] * instance.num_sampled_landmarks, dtype=float)
     print("[B1] Running geometry with baseline delta (all 0.5)...")
     run_geometry_blackbox_timeout(instance, mesh, delta_baseline, garment_part=GARMENT_TYPE)
 

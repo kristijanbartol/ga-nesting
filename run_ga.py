@@ -2,6 +2,7 @@
 import json
 import os
 from copy import deepcopy
+import numpy as np
 
 from ga_spec import GAInstance, GAConfig, run_ga
 from ga.real_evaluator import RealEvaluator, RealEvaluatorConfig
@@ -215,12 +216,16 @@ def parse_args():
                    help="Population size (default: 50)")
     p.add_argument("--gens", type=int, default=1,
                    help="Number of generations (default: 1)")
+    p.add_argument("--num_bodies", type=int, default=1,
+                   help="Number of bodies (default: 1)")
     p.add_argument("--seed", type=int, default=0,
                    help="Random seed (default: 0)")
     p.add_argument("--w1", type=float, default=1.0,
                    help="Fitness weight for fabric height f1 (default: 1.0)")
-    p.add_argument("--w2", type=float, default=0.0,
-                   help="Fitness weight for seam phase mismatch f2 (default: 0.0)")
+    p.add_argument("--w2", type=float, default=10.0,
+                   help="Fitness weight for seam phase mismatch f2 (default: 10.0)")
+    p.add_argument("--w4", type=float, default=0.0,
+                   help="Fitness weight for 3D patch area deviation f4 (default: 0.0)")
     return p.parse_args()
 
 
@@ -236,10 +241,11 @@ def main():
         period_v_mm=50.0,
         K=8,
         fabric_width_mm=150.0 * 10.0,
-        num_bodies=2,
+        num_bodies=args.num_bodies,
         wallpaper_group=args.wallpaper,
         w1=args.w1,
         w2=args.w2,
+        w4=args.w4,
     )
     evaluator = RealEvaluator(eval_cfg)
 
@@ -253,9 +259,9 @@ def main():
     inst = GAInstance(
         num_patches=num_patches,
         K=eval_cfg.K,
-        num_landmarks=evaluator.instance.num_landmarks,
+        num_landmarks=evaluator.instance.num_sampled_landmarks,
         num_bodies=eval_cfg.num_bodies,
-        fixed_rho=None,
+        fixed_rho=np.zeros(num_patches * eval_cfg.num_bodies, dtype=int),
         fixed_pi=None,
         fixed_h=None,
         num_heuristics=3,

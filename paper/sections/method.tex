@@ -54,8 +54,8 @@ Group & Name & Pattern & Seam compatibility \\
 PM  & stripes          & horizontal stripes    & $\rho_i \equiv \rho_j \pmod{2}$ \\
 PM  & diagonal stripes & stripes at 45°        & $\rho_i \equiv \rho_j \pmod{2}$ \\
 PMM & grid             & check / plaid         & all pairs \\
-P4  &                  & 4-fold rotation       & all pairs \\
-P4M &                  & 4-fold + mirrors      & all pairs \\
+P4  & pinwheel         & 4-fold rotation       & all pairs \\
+P4M & pinwheel mirrors & 4-fold + mirrors      & all pairs \\
 PG  & herringbone      & glide reflection only & $\rho_i \equiv \rho_j \pmod{2}$ \\
 PMG & chevron          & mirror + glide        & $\rho_i \equiv \rho_j \pmod{2}$ \\
 PGG & brick bond       & two glide axes        & $\rho_i \equiv \rho_j \pmod{2}$ \\
@@ -267,9 +267,9 @@ triangles of chart $p_i$.
 \subsection{Evolutionary Algorithm}
 \label{sec:ea}
 
-The mixed structure of the genotype — continuous ($\boldsymbol{\delta}$),
-discrete ($\boldsymbol{\rho}, \boldsymbol{\kappa}, \lambda_s, h$),
-and combinatorial ($\pi$) — motivates a genetic algorithm with
+The mixed structure of the genotype (continuous $\boldsymbol{\delta}$,
+discrete $\boldsymbol{\rho}, \boldsymbol{\kappa}, \lambda_s, h$,
+and combinatorial $\pi$) motivates a genetic algorithm with
 variable-specific operators rather than a standard real-valued EA.
 
 \paragraph{Selection.}
