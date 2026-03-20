@@ -184,12 +184,14 @@ def save_best_individual_data(best_ind,
         m = _trimesh.Trimesh(vertices=verts, faces=faces, process=False)
         m.export(os.path.join(out_dir, 'optim_final-seams.ply'))
 
-    # Copy seam constraint files (deterministic text files, safe to copy from disk)
-    src_seams = os.path.join(seam_dir_base, garment_type)
+    # Write seam constraint files from the snapshotted meta (same evaluation as the patches).
     dst_seams = os.path.join(seam_dir_base, "best", garment_type)
     if os.path.exists(dst_seams):
         shutil.rmtree(dst_seams)
-    shutil.copytree(src_seams, dst_seams)
+    os.makedirs(dst_seams)
+    for fn, content in best_ind.meta.get("seam_files_raw", {}).items():
+        with open(os.path.join(dst_seams, fn), 'w') as f:
+            f.write(content)
 
     # Write 3D patches from stored meta
     dst_3d = os.path.join(patches_3d_dir_base, "best", garment_type)
@@ -401,7 +403,9 @@ def main():
     print("\n[main] Running cloth simulation for best individual...")
     from geometry.simulation import run_headless_simulation
     run_headless_simulation(
-        avatar='data/SMPL_FEMALE_POSED.ply',
+        #avatar='data/SMPL_FEMALE_POSED.ply',
+        avatar='data/SMPL_FEMALE.ply',
+        garment_type=GARMENT_TYPE,
         tsol=Tsol,
         kappas_by_id=kappas_by_id,
         K=eval_cfg.K,

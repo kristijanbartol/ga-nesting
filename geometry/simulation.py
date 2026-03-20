@@ -23,7 +23,7 @@ PANTS = False
 HORSE = False
 
 
-def read_patches(is_adapt=False, patches_dir='data/patches/upper'):
+def read_patches(is_adapt=False, garment_type='upper', patches_dir='data/patches/upper'):
     patch_meshes = []
     for patch_dirname in sorted(os.listdir(patches_dir)):
         patch_dir = f'{patches_dir}/{patch_dirname}/'
@@ -40,8 +40,8 @@ def read_patches(is_adapt=False, patches_dir='data/patches/upper'):
     return merged, unmerged
 
 
-def read_back_idxs():
-    with open('data/labels/upper/back.txt', 'r') as labels_f:
+def read_back_idxs(garment_type='upper'):
+    with open(f'data/labels/{garment_type}/back.txt', 'r') as labels_f:
         back_idxs = list(map(int, labels_f.read().split()))
     return back_idxs
 
@@ -58,15 +58,15 @@ def _outer_boundary_centroid_mm(mesh):
     return V2[outer].mean(axis=0)
 
 
-def read_sewing_pattern(pattern_root: str = 'results/pattern/latest'):
+def read_sewing_pattern(pattern_root: str = 'results/pattern/latest', garment_type='upper'):
     """Returns the merged 2D simulation mesh and patch_info list.
 
     patch_info: list of (patch_id, vertex_start, vertex_end, was_y_flipped, boundary_centroid_mm)
       - vertex ranges index into the merged UV array
       - boundary_centroid_mm matches the Stage2 solver's centering convention
     """
-    param_2d_dir = os.path.join(pattern_root, 'upper')
-    back_idxs = read_back_idxs()
+    param_2d_dir = os.path.join(pattern_root, garment_type)
+    back_idxs = read_back_idxs(garment_type)
     patch_2d_meshes = []
     patch_info = []
     vertex_offset = 0
@@ -141,7 +141,7 @@ def extract_upper_rim(garment_verts, garment_faces):
 
 class Example:
 
-    def __init__(self, viewer, avatar, is_adapt=False,
+    def __init__(self, viewer, avatar, garment_type, is_adapt=False,
                  tsol=None, kappas_by_id=None, K=None,
                  period_u_mm=None, period_v_mm=None,
                  pattern_root='results/pattern/latest',
@@ -163,8 +163,8 @@ class Example:
         #self.scale = 10     # scale up to improve simulation result
         self.scale = 5     # scale up to improve simulation result
 
-        garment_mesh_3d, garment_mesh_3d_unmerged = read_patches(is_adapt, patches_dir=patches_dir)
-        garment_mesh_2d, patch_info = read_sewing_pattern(pattern_root)
+        garment_mesh_3d, garment_mesh_3d_unmerged = read_patches(is_adapt, garment_type, patches_dir=patches_dir)
+        garment_mesh_2d, patch_info = read_sewing_pattern(pattern_root, garment_type)
 
         if PANTS:
             rim_idxs = extract_upper_rim(garment_mesh_3d.vertices, garment_mesh_3d.faces)
@@ -194,7 +194,7 @@ class Example:
         self.unmerged_to_merged = np.array([unmerged_to_merged_dict[i] for i in range(N_unmerged)], dtype=np.int32)
         self.save_every = 10
         self.frame_idx = 0
-        self.out_dir = Path("./results/simulation/upper/")
+        self.out_dir = Path(f"./results/simulation/{garment_type}/")
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
         #garment_mesh_3d.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 3, [0, 1, 0]))
@@ -392,6 +392,8 @@ class Example:
         if (self.frame_idx % self.save_every) == 0:
             self.save_frame_ply()
 
+        self.frame_idx += 1
+
     def render(self):
         self.viewer.begin_frame(self.sim_time)
         self.viewer.log_state(self.state_0)
@@ -411,13 +413,13 @@ def run_simulation(avatar):
     #newton.examples.run(example)
 
 
-def run_headless_simulation(avatar, is_adapt=False,
+def run_headless_simulation(avatar, garment_type, is_adapt=False,
                              tsol=None, kappas_by_id=None, K=None,
                              period_u_mm=None, period_v_mm=None,
                              pattern_root='results/pattern/latest',
                              patches_dir='data/patches/upper'):
     viewer = HeadlessViewer()
-    example = Example(viewer, avatar, is_adapt,
+    example = Example(viewer, avatar, garment_type, is_adapt,
                       tsol=tsol, kappas_by_id=kappas_by_id, K=K,
                       period_u_mm=period_u_mm, period_v_mm=period_v_mm,
                       pattern_root=pattern_root,

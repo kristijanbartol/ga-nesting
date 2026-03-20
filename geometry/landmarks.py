@@ -19,19 +19,11 @@ CORE_LANDMARKS = {
             name="Hip",
             boundary_corners=(4144, 5261, 5250, 4286)
         ),
-        "Hip_Front": LandmarkDefinition(
-            name="Hip_Front",
-            boundary_corners=(3160, 3160, 3160, 3160)
-        ),
-        "Hip_Back": LandmarkDefinition(
-            name="Hip_Back",
-            boundary_corners=(1784, 1784, 1784, 1784)
-        ),
     },
     "Lower": {
         "Hip": LandmarkDefinition(
             name="Hip",
-            boundary_corners=(4984, 4984, 4921, 4921)
+            boundary_corners=(4144, 5261, 5250, 4286)
         ),
         "Crotch": LandmarkDefinition(
             name="Crotch",
@@ -173,6 +165,25 @@ LOWER_DERIVED_MIDLINE: tuple = (
     ("Hip_Back",  "Hip_L", False),
 )
 
+# Same structure for the upper (shirt/sleeveless) garment — derived from its own Hip_L.
+UPPER_MIDLINE_LANDMARKS = {
+    "Hip_Front": LandmarkDefinition(
+        name="Hip_Front",
+        boundary_corners=(0, 0, 0, 0),   # unused — vertex derived at runtime
+        is_derived=True,
+    ),
+    "Hip_Back": LandmarkDefinition(
+        name="Hip_Back",
+        boundary_corners=(0, 0, 0, 0),   # unused — vertex derived at runtime
+        is_derived=True,
+    ),
+}
+
+UPPER_DERIVED_MIDLINE: tuple = (
+    ("Hip_Front", "Hip_L", True),
+    ("Hip_Back",  "Hip_L", False),
+)
+
 SHIRTLESS_SEAMS = [
     "Side_L",
     "Side_R",
@@ -248,3 +259,4 @@ ONESIE_WITH_SLEEVES_SEAMS = ONESIE_SEAMS + [
 
 ACTIVE_SEAMS = PANT_SEAMS.copy()
 SHOULDER_KPT_IDX = 5335
+HIP_KPT_IDX = 4418   # side hip vertex used as Y anchor for front/back midline detection

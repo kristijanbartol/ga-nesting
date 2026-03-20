@@ -84,8 +84,31 @@
             "args": [
                 "--garment", "lower",
                 "--wallpaper", "stripes",
-                "--pop", "50",
-                "--gens", "5",
+                "--pop", "10",
+                "--gens", "1",
+                "--num_bodies", "1",
+                "--seed", "0",
+                "--w1", "1.0",
+                "--w2", "10.0",
+                "--w4", "0.0"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
+            },
+            "console": "integratedTerminal"
+        },
+
+        {
+            "name": "Simulate",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/geometry/simulation.py",
+            "args": [
+                "--garment", "lower",
+                "--wallpaper", "stripes",
+                "--pop", "10",
+                "--gens", "1",
                 "--num_bodies", "1",
                 "--seed", "0",
                 "--w1", "1.0",
@@ -129,7 +152,8 @@
             "request": "launch",
             "program": "${workspaceFolder}/visualize_simulation.py",
             "args": [
-                "--wallpaper", "p4m",
+                "--garment", "lower",
+                "--wallpaper", "stripes",
                 "--period", "50.0"
             ],
             "cwd": "${workspaceFolder}",

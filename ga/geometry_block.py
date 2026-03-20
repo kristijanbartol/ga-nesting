@@ -9,16 +9,17 @@ import torch
 
 from spec import LandmarkDefinition, TextureSpec
 from experiment_loader import load_experiment
-from geometry.geometry_utils import LandmarkMapper, generate_symmetric_landmarks
+from geometry.geometry_utils import LandmarkMapper, generate_symmetric_landmarks, find_midline_vidx
 from geometry.topologies import build_pant_topology, build_sleeveless_shirt_topology
 from geometry.cut_utils import perform_global_cut, assign_patch_labels
 from geometry.export import export_data
 from geometry.geometry_processor import BatchBuilder
 from geometry.parameterization import parameterize
 from geometry.landmarks import (
-    CORE_LANDMARKS, LONG_LANDMARKS, SHOULDER_KPT_IDX,
+    CORE_LANDMARKS, LONG_LANDMARKS, SHOULDER_KPT_IDX, HIP_KPT_IDX,
     PANT_SEAMS, SHIRTLESS_SEAMS,
     LOWER_MIDLINE_LANDMARKS, LOWER_DERIVED_MIDLINE,
+    UPPER_MIDLINE_LANDMARKS, UPPER_DERIVED_MIDLINE,
 )
 
 
@@ -37,8 +38,9 @@ _GARMENT_CONFIGS = {
         "landmark_fn": lambda: {**CORE_LANDMARKS["Upper"]},   # sleeveless: no sleeve landmarks
         "topology":    build_sleeveless_shirt_topology,
         "active_seams": SHIRTLESS_SEAMS,
-        "derived_landmarks": {},
-        "derived_lm_specs":  (),
+        # Hip_Front / Hip_Back are midline landmarks derived from Hip_L at runtime.
+        "derived_landmarks": UPPER_MIDLINE_LANDMARKS,
+        "derived_lm_specs":  UPPER_DERIVED_MIDLINE,
     },
 }
 
@@ -85,7 +87,7 @@ def run_geometry_blackbox(instance, mesh, delta_uv: np.ndarray, garment_part: st
       - results/pattern/latest/{garment_part}/patch_*/optim_final-seams.ply
     """
     mapper = LandmarkMapper(instance)
-    vertex_ids = mapper.map_genotype_to_vertices(delta_uv)
+    vertex_ids, name_to_vidx = mapper.map_genotype_to_vertices(delta_uv)
 
     builder = BatchBuilder(instance)
     landmarks_batch = builder.build_batch(vertex_ids)
@@ -93,8 +95,14 @@ def run_geometry_blackbox(instance, mesh, delta_uv: np.ndarray, garment_part: st
     cut_mesh, patches, patch_faces, seamlines_dict_list, symmetric_flags, valid_patch_idxs, seam_batch_indices = perform_global_cut(
         landmarks_batch, mesh.vertices, mesh.faces
     )
+    if garment_part == 'lower':
+        front_vidx = find_midline_vidx(mesh.vertices, mesh.faces, HIP_KPT_IDX, front=True)
+        back_vidx  = find_midline_vidx(mesh.vertices, mesh.faces, HIP_KPT_IDX, front=False)
+        ref_point = (mesh.vertices[front_vidx] + mesh.vertices[back_vidx]) / 2.0
+    else:
+        ref_point = mesh.vertices[SHOULDER_KPT_IDX]
     patch_labels_dict = assign_patch_labels(
-        patches, garment_part, valid_patch_idxs, mesh.vertices[SHOULDER_KPT_IDX]
+        patches, garment_part, valid_patch_idxs, ref_point
     )
 
     # Build batch position → seam name mapping so each seam file is named by its

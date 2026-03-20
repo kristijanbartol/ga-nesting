@@ -272,10 +272,12 @@ def visualize(ply_path: str = PLY_PATH,
 def parse_args():
     import argparse
     p = argparse.ArgumentParser(description="Visualize simulated garment texture.")
+    p.add_argument("--garment", default="upper", choices=["upper", "lower"],
+                   help="Garment type; sets default paths for PLY, param dir, and back labels (default: upper)")
     p.add_argument("--wallpaper", default=WALLPAPER_GROUP, choices=["stripes", "diagonal_stripes", "grid", "p4", "p4m", "pg", "pmg", "pgg"],
                    help="Texture wallpaper group (default: stripes)")
-    p.add_argument("--ply", default=PLY_PATH,
-                   help="Path to simulated garment PLY (default: %(default)s)")
+    p.add_argument("--ply", default=None,
+                   help="Path to simulated garment PLY (default: results/simulation/<garment>/cloth_00000.ply)")
     p.add_argument("--json", default="results/pattern/best/best_individual.json",
                    help="Path to best_individual.json (default: %(default)s)")
     p.add_argument("--period", type=float, default=PERIOD_U_MM,
@@ -285,10 +287,17 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
+    g = args.garment
+    ply_path   = args.ply or f"results/simulation/{g}/cloth_00000.ply"
+    param_dir  = f"results/pattern/best/{g}"
+    back_labels = f"data/labels/{g}/back.txt"
+
     show_best_nesting(json_path=args.json)                                 # 1) reference nesting layout
-    debug_uv_2d(ply_path=args.ply,
+    debug_uv_2d(ply_path=ply_path,
+                param_dir=param_dir,
+                back_labels=back_labels,
                 period_u_mm=args.period, period_v_mm=args.period,
                 wallpaper_group=args.wallpaper)                            # 2) UV debug: 2D pattern colored by PLY UV
-    visualize(ply_path=args.ply,
+    visualize(ply_path=ply_path,
               period_u_mm=args.period, period_v_mm=args.period,
               wallpaper_group=args.wallpaper)                              # 3) 3D Polyscope render

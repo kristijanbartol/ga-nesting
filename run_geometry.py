@@ -8,7 +8,8 @@ from spec import TextureSpec
 from experiment_loader import load_experiment
 from geometry.geometry_utils import (
     LandmarkMapper,
-    generate_symmetric_landmarks
+    generate_symmetric_landmarks,
+    find_midline_vidx,
 )
 from geometry.topologies import build_shirt_topology, build_test_topology
 from geometry.cut_utils import (
@@ -18,7 +19,7 @@ from geometry.cut_utils import (
 from geometry.export import export_data
 from geometry.geometry_processor import BatchBuilder
 from geometry.parameterization import parameterize
-from geometry.landmarks import CORE_LANDMARKS, LONG_LANDMARKS, SHOULDER_KPT_IDX, ACTIVE_SEAMS
+from geometry.landmarks import CORE_LANDMARKS, LONG_LANDMARKS, SHOULDER_KPT_IDX, HIP_KPT_IDX, ACTIVE_SEAMS
 
 # ==============================================================================
 # 1. SETUP EXPERIMENT
@@ -59,7 +60,7 @@ mapper = LandmarkMapper(instance)
 # Let's try [0.5, 0.5] for all (should act like center of the quad)
 dummy_delta = np.array([0.5, 0.5] * instance.num_sampled_landmarks)
 
-vertex_ids = mapper.map_genotype_to_vertices(dummy_delta)
+vertex_ids, _ = mapper.map_genotype_to_vertices(dummy_delta)
 
 print(f"   Input Delta: {dummy_delta}")
 print(f"   Mapped Vertex IDs: {vertex_ids}")
@@ -74,7 +75,13 @@ landmarks_batch = builder.build_batch(vertex_ids)
 # step 3 - cutting
 for garment_part in ['upper']:
     cut_mesh, patches, patch_faces, seamlines_dict_list, symmetric_seamline_flags, valid_patch_idxs, _seam_batch_indices = perform_global_cut(landmarks_batch, mesh.vertices, mesh.faces)
-    patch_labels_dict = assign_patch_labels(patches, garment_part, valid_patch_idxs, mesh.vertices[SHOULDER_KPT_IDX])
+    if garment_part == 'lower':
+        front_vidx = find_midline_vidx(mesh.vertices, mesh.faces, HIP_KPT_IDX, front=True)
+        back_vidx  = find_midline_vidx(mesh.vertices, mesh.faces, HIP_KPT_IDX, front=False)
+        ref_point = (mesh.vertices[front_vidx] + mesh.vertices[back_vidx]) / 2.0
+    else:
+        ref_point = mesh.vertices[SHOULDER_KPT_IDX]
+    patch_labels_dict = assign_patch_labels(patches, garment_part, valid_patch_idxs, ref_point)
     
     export_data( 
         patches, 

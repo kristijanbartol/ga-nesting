@@ -257,6 +257,14 @@ class RealEvaluator:
                     patches_2d_raw[dname] = (np.array(m.vertices), np.array(m.faces))
             ind.meta["patches_2d_raw"] = patches_2d_raw
 
+            seam_files_raw = {}
+            if os.path.isdir(self.cfg.seam_dir):
+                for fn in os.listdir(self.cfg.seam_dir):
+                    if fn.startswith("seam-") and fn.endswith(".txt"):
+                        with open(os.path.join(self.cfg.seam_dir, fn), 'r') as _sf:
+                            seam_files_raw[fn] = _sf.read()
+            ind.meta["seam_files_raw"] = seam_files_raw
+
             patches_3d_raw = {}
             patches_3d_dir = f"data/patches/{self.cfg.garment_part}"
             if os.path.isdir(patches_3d_dir):

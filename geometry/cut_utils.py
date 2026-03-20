@@ -130,9 +130,7 @@ def assign_patch_labels(patches, garment_part, valid_patch_idxs, ref_point):
                     patch_labels_dict['sleeve'].append(patch_idx)
             
             # check whether the patch is a back patch
-            count_back = (patch.vertices[:, 2] < ref_point[2]).sum()
-            is_majority_back = count_back > (len(patch.vertices) / 2)
-            if is_majority_back:
+            if patch.vertices[:, 2].mean() < 0.0:
                 patch_labels_dict['back'].append(patch_idx)
 
     return patch_labels_dict

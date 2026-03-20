@@ -82,8 +82,20 @@ class LandmarkMapper:
                     f"Reference landmark '{ref_name}' not resolved before "
                     f"derived landmark '{derived_name}'"
                 )
+
+            # Use the average Y of the symmetric pair (e.g. Hip_L + Hip_R)
+            # as the height target so the midline vertex sits at the balanced
+            # height between both sampled seam endpoints, not just one side.
+            y_override = None
+            if ref_name.endswith("_L"):
+                counterpart = ref_name[:-2] + "_R"
+                cpt_vidx = name_to_vidx.get(counterpart)
+                if cpt_vidx is not None:
+                    y_override = (self.vertices[ref_vidx, 1] + self.vertices[cpt_vidx, 1]) / 2.0
+
             midline_vidx = find_midline_vidx(
-                self.vertices, self.instance.mesh_faces, ref_vidx, front=is_front
+                self.vertices, self.instance.mesh_faces, ref_vidx,
+                front=is_front, y_override=y_override,
             )
             active_idx = name_to_active_idx.get(derived_name)
             if active_idx is None:
@@ -93,7 +105,7 @@ class LandmarkMapper:
             resolved_indices[active_idx] = midline_vidx
             name_to_vidx[derived_name] = midline_vidx
 
-        return np.array(resolved_indices, dtype=np.int32)
+        return np.array(resolved_indices, dtype=np.int32), name_to_vidx
 
 
 def generate_symmetric_landmarks(
@@ -150,8 +162,8 @@ def extract_side_idx(mesh, idx1, idx2, z_offset: float):
     return _get_closest_idx(mesh.vertices, query_p)
 
 
-def find_midline_vidx(verts, faces, v_idx, front=True):
-    y = verts[v_idx, 1]
+def find_midline_vidx(verts, faces, v_idx, front=True, y_override=None):
+    y = y_override if y_override is not None else verts[v_idx, 1]
     sign = 1.0 if front else -1.0
     # unique undirected edges
     edges = np.unique(
@@ -164,16 +176,23 @@ def find_midline_vidx(verts, faces, v_idx, front=True):
         v0, v1 = verts[i0], verts[i1]
         if v0[2] * sign <= 0 or v1[2] * sign <= 0:
             continue
-        t = (y - v0[1]) / (v1[1] - v0[1])
+        denom = v1[1] - v0[1]
+        if abs(denom) < 1e-10:
+            continue
+        t = (y - v0[1]) / denom
         if 0 <= t <= 1:
             # minimize how far BOTH edge endpoints are from X=0
             score = max(abs(v0[0]), abs(v1[0]))
             if score < best[0]:
                 best = (score, v0 + t * (v1 - v0), i0, i1, edge_idx)
 
-    _, p, i0, i1, best_idx = best
+    _, p, i0, i1, _ = best
 
-    if abs(verts[i0][0]) < abs(verts[i1][0]):
+    # Snap to the endpoint nearest to the exact interpolated point p (which has
+    # X≈0 and Y=target exactly). Using 3D distance avoids picking an endpoint
+    # that is far above/below the target height — the previous |X|-only criterion
+    # would often select the wrong endpoint on curved back regions (e.g. sacrum).
+    if np.linalg.norm(verts[i0] - p) < np.linalg.norm(verts[i1] - p):
         return i0
     else:
         return i1
