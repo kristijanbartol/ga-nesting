@@ -55,47 +55,51 @@ def _weights_by_filename(seam_dir, importance_by_name):
     return result
 
 
-def main():
-    # ── 1. Geometry (baseline delta: all landmarks at quad midpoint) ──────────
+def run(garment_type: str = GARMENT_TYPE, num_bodies: int = 1) -> dict:
+    """Run B0 headlessly and return {f1_mm, f1_norm, f2, f_sum, fabric_state, ...}."""
+    from copy import deepcopy
+    seam_dir = f"data/seamlines/{garment_type}"
+
     instance, mesh = build_instance(
         mesh_path="data/SMPL_FEMALE.ply",
         fabric_width=FABRIC_WIDTH_MM / 1000.0,
-        garment_type=GARMENT_TYPE,
+        garment_type=garment_type,
     )
     delta_baseline = np.array([0.5, 0.5] * instance.num_sampled_landmarks, dtype=float)
     print("[B0] Running geometry with baseline delta (all 0.5)...")
-    run_geometry_blackbox_timeout(instance, mesh, delta_baseline, garment_part=GARMENT_TYPE)
+    run_geometry_blackbox_timeout(instance, mesh, delta_baseline, garment_part=garment_type)
 
-    # ── 2. Load patches and nest (area-sorted, kappa=0, rho=0) ───────────────
-    loader = PatchLoader(LATEST_ROOT, GARMENT_TYPE)
-    items = loader.load_items()
-    # phase_offset defaults to (0, 0) in NestingItem, so kappa=0 is implicit.
+    loader = PatchLoader(LATEST_ROOT, garment_type)
+    base_items = loader.load_items()
+
+    all_items = []
+    for b in range(num_bodies):
+        for it in base_items:
+            clone = deepcopy(it)
+            clone.name = f"body_{b}/{it.name}"
+            all_items.append(clone)
 
     engine = NestingEngine(fabric_width=FABRIC_WIDTH_MM, texture_spec=instance.texture)
-    print("[B0] Nesting (area-sorted, no kappa, no rho)...")
-    fabric_state = engine.nest(items)  # permutation=None → area-sorted descending
+    print(f"[B0] Nesting ({num_bodies} bodies, area-sorted, no kappa, no rho)...")
+    fabric_state = engine.nest(all_items)
 
     f1 = fabric_state.total_height
     f1_norm = f1 / FABRIC_WIDTH_MM
-    print(f"[B0] f1 = {f1:.1f} mm  (normalised: {f1_norm:.4f})")
 
-    # ── 3. Compute f2 (no Stage 2, all kappa=0, identity transforms) ─────────
     importance_by_name = _seam_importance_map(instance)
     constraints = load_seam_constraints_from_dir(
-        SEAM_DIR,
-        weights_by_filename=_weights_by_filename(SEAM_DIR, importance_by_name),
+        seam_dir,
+        weights_by_filename=_weights_by_filename(seam_dir, importance_by_name),
         default_weight=0.0,
     )
-
     lattice = TextureLattice(
         u_dir=np.array([1.0, 0.0]),
         v_dir=np.array([0.0, 1.0]),
         period_u=PERIOD_U_MM,
         period_v=PERIOD_V_MM,
     )
-
     V_centered_by_id = load_patch_vertices_full_from_latest(
-        LATEST_ROOT, garment_part=GARMENT_TYPE, scale_mm=1000.0, center_by_boundary=True
+        LATEST_ROOT, garment_part=garment_type, scale_mm=1000.0, center_by_boundary=True
     )
     kappas_by_id = {pid: 0 for pid in V_centered_by_id}
     transforms   = {pid: Rigid2D(0.0, 0.0, 0.0) for pid in V_centered_by_id}
@@ -109,19 +113,26 @@ def main():
             patch_i_vertices_xy=V_centered_by_id[c.patch_i],
             patch_j_vertices_xy=V_centered_by_id[c.patch_j],
             lattice=lattice,
-            kappa_i=0,
-            kappa_j=0,
-            K=K,
-            weight=c.weight,
+            kappa_i=0, kappa_j=0, K=K, weight=c.weight,
         )
 
-    print(f"[B0] f2 = {f2:.4f}")
-    print(f"[B0] fitness sum = {f1_norm + f2:.4f}")
+    print(f"[B0] f1={f1:.1f}mm  f2={f2:.4f}  f_sum={f1_norm + f2:.4f}")
+    return {
+        "f1_mm": f1, "f1_norm": f1_norm, "f2": f2, "f_sum": f1_norm + f2,
+        "fabric_state": fabric_state, "constraints": constraints,
+        "V_centered_by_id": V_centered_by_id, "lattice": lattice,
+        "kappas_by_id": kappas_by_id, "transforms": transforms,
+        "instance": instance,
+    }
 
-    # ── 4. Visualise ──────────────────────────────────────────────────────────
-    visualize_layout(fabric_state, instance.texture, title="B0 — Pure Greedy (no texture alignment)")
-    plot_seam_mismatch(constraints, V_centered_by_id, lattice, kappas_by_id, K, transforms,
-                       title="B0 — Seam Phase Mismatch")
+
+def main():
+    result = run(GARMENT_TYPE, num_bodies=1)
+    visualize_layout(result["fabric_state"], result["instance"].texture,
+                     title="B0 — Pure Greedy (no texture alignment)")
+    plot_seam_mismatch(result["constraints"], result["V_centered_by_id"],
+                       result["lattice"], result["kappas_by_id"], K,
+                       result["transforms"], title="B0 — Seam Phase Mismatch")
 
 
 if __name__ == "__main__":

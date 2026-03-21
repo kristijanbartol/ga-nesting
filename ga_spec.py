@@ -240,7 +240,19 @@ def evaluate_population(pop: List[Individual], evaluator: Evaluator) -> None:
             print(f"         -> f1={f[0]:.2f}  f2={f[1]:.4f}  sum={f.sum():.4f}")
 
 
-def run_ga(inst: GAInstance, evaluator: Evaluator, cfg: GAConfig) -> List[Individual]:
+def _conv_entry(gen: int, pop: "List[Individual]") -> dict:
+    best = min(pop, key=lambda ind: ind.fitness.values.sum())  # type: ignore
+    return {
+        "gen":        gen,
+        "best_f_sum": float(best.fitness.values.sum()),
+        "best_f1_mm": float(best.meta.get("f1_height_mm", float("nan"))),
+        "best_f2":    float(best.meta.get("f2_phase",     float("nan"))),
+    }
+
+
+def run_ga(
+    inst: GAInstance, evaluator: Evaluator, cfg: GAConfig
+) -> "tuple[List[Individual], list[dict]]":
     rng = random.Random(cfg.seed)
     np.random.seed(cfg.seed)
 
@@ -262,6 +274,7 @@ def run_ga(inst: GAInstance, evaluator: Evaluator, cfg: GAConfig) -> List[Indivi
     evaluate_population(pop, evaluator)
     _pop_table(pop, "Initial population:")
 
+    convergence_log: list[dict] = [_conv_entry(0, pop)]
     prev_best_sum = min(ind.fitness.values.sum() for ind in pop)  # type: ignore
 
     for gen in range(cfg.generations):
@@ -299,5 +312,6 @@ def run_ga(inst: GAInstance, evaluator: Evaluator, cfg: GAConfig) -> List[Indivi
         improvement = f"improved by {delta:.4f}" if delta > 1e-9 else "no improvement"
         _pop_table(pop, f"Gen {gen + 1} population  ({improvement}):")
         prev_best_sum = best_sum
+        convergence_log.append(_conv_entry(gen + 1, pop))
 
-    return pop
+    return pop, convergence_log

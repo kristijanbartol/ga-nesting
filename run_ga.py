@@ -281,7 +281,7 @@ def main():
         weight_sigma=0.20,
     )
 
-    pop = run_ga(inst, evaluator, cfg)
+    pop, _ = run_ga(inst, evaluator, cfg)
 
     # Visualize all individuals ordered best → worst
     visualize_population(pop, evaluator.instance.texture, title="Final population — best (top-left) to worst (bottom-right)")

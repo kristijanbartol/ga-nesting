@@ -156,22 +156,24 @@ def _greedy_kappa(pid: int,
 
 # ── main ─────────────────────────────────────────────────────────────────────
 
-def main():
-    # ── 1. Geometry (baseline delta) ─────────────────────────────────────────
+def run(garment_type: str = GARMENT_TYPE, num_bodies: int = 1) -> dict:
+    """Run B1 headlessly and return {f1_mm, f1_norm, f2, f_sum, fabric_state, ...}."""
+    from copy import deepcopy
+    seam_dir = f"data/seamlines/{garment_type}"
+
     instance, mesh = build_instance(
         mesh_path="data/SMPL_FEMALE.ply",
         fabric_width=FABRIC_WIDTH_MM / 1000.0,
-        garment_type=GARMENT_TYPE,
+        garment_type=garment_type,
     )
     delta_baseline = np.array([0.5, 0.5] * instance.num_sampled_landmarks, dtype=float)
     print("[B1] Running geometry with baseline delta (all 0.5)...")
-    run_geometry_blackbox_timeout(instance, mesh, delta_baseline, garment_part=GARMENT_TYPE)
+    run_geometry_blackbox_timeout(instance, mesh, delta_baseline, garment_part=garment_type)
 
-    # ── 2. Load seam constraints and patch vertices ───────────────────────────
     importance_by_name = _seam_importance_map(instance)
     constraints = load_seam_constraints_from_dir(
-        SEAM_DIR,
-        weights_by_filename=_weights_by_filename(SEAM_DIR, importance_by_name),
+        seam_dir,
+        weights_by_filename=_weights_by_filename(seam_dir, importance_by_name),
         default_weight=0.0,
     )
     for c in constraints:
@@ -183,23 +185,20 @@ def main():
         period_u=PERIOD_U_MM,
         period_v=PERIOD_V_MM,
     )
-
     V_centered_by_id = load_patch_vertices_full_from_latest(
-        LATEST_ROOT, garment_part=GARMENT_TYPE, scale_mm=1000.0, center_by_boundary=True
+        LATEST_ROOT, garment_part=garment_type, scale_mm=1000.0, center_by_boundary=True
     )
 
-    # ── 3. Load nesting items and build lookup tables ─────────────────────────
-    loader = PatchLoader(LATEST_ROOT, GARMENT_TYPE)
-    items = loader.load_items()
-    items_by_pid = {_patch_id(it): it for it in items}
+    loader = PatchLoader(LATEST_ROOT, garment_type)
+    base_items = loader.load_items()
+    items_by_pid = {_patch_id(it): it for it in base_items}
     patch_ids = sorted(items_by_pid.keys())
     area_by_pid = {pid: items_by_pid[pid].area for pid in patch_ids}
 
-    # ── 4. BFS ordering ───────────────────────────────────────────────────────
+    # Greedy kappa computed once on a single body; same kappas applied to all bodies.
     bfs_order = _bfs_order(patch_ids, constraints, area_by_pid)
     print(f"[B1] BFS patch order: {bfs_order}")
 
-    # ── 5. Greedy kappa assignment ────────────────────────────────────────────
     placed_kappas: dict[int, int] = {}
     kappas_by_id: dict[int, int] = {}
     tx = instance.texture.period_x
@@ -209,27 +208,32 @@ def main():
         k = _greedy_kappa(pid, placed_kappas, constraints, V_centered_by_id, lattice, K)
         placed_kappas[pid] = k
         kappas_by_id[pid] = k
-        items_by_pid[pid].phase_offset = ((k / float(K)) * tx, (k / float(K)) * ty)
 
     print(f"[B1] Greedy kappas: {kappas_by_id}")
 
-    # ── 6. Nest in BFS order ──────────────────────────────────────────────────
-    # Build a permutation list that maps BFS rank → item index in the
-    # original `items` list (as the engine expects).
-    item_idx_by_pid = {_patch_id(it): i for i, it in enumerate(items)}
-    permutation = [item_idx_by_pid[pid] for pid in bfs_order if pid in item_idx_by_pid]
+    # Duplicate items for each body, applying the same greedy kappas.
+    all_items = []
+    for b in range(num_bodies):
+        for pid in bfs_order:
+            if pid not in items_by_pid:
+                continue
+            it = deepcopy(items_by_pid[pid])
+            it.name = f"body_{b}/{it.name}"
+            k = kappas_by_id[pid]
+            it.phase_offset = ((k / float(K)) * tx, (k / float(K)) * ty)
+            all_items.append(it)
+
+    # Permutation: BFS order repeated for each body, in body-major order.
+    permutation = list(range(len(all_items)))
 
     engine = NestingEngine(fabric_width=FABRIC_WIDTH_MM, texture_spec=instance.texture)
-    print("[B1] Nesting (BFS order, greedy kappa)...")
-    fabric_state = engine.nest(items, permutation=permutation)
+    print(f"[B1] Nesting ({num_bodies} bodies, BFS order, greedy kappa)...")
+    fabric_state = engine.nest(all_items, permutation=permutation)
 
     f1 = fabric_state.total_height
     f1_norm = f1 / FABRIC_WIDTH_MM
-    print(f"[B1] f1 = {f1:.1f} mm  (normalised: {f1_norm:.4f})")
 
-    # ── 7. Compute f2 (no Stage 2) ────────────────────────────────────────────
     transforms = {pid: Rigid2D(0.0, 0.0, 0.0) for pid in V_centered_by_id}
-
     f2 = 0.0
     for c in constraints:
         if c.patch_i not in V_centered_by_id or c.patch_j not in V_centered_by_id:
@@ -241,18 +245,26 @@ def main():
             lattice=lattice,
             kappa_i=kappas_by_id.get(c.patch_i, 0),
             kappa_j=kappas_by_id.get(c.patch_j, 0),
-            K=K,
-            weight=c.weight,
+            K=K, weight=c.weight,
         )
 
-    print(f"[B1] f2 = {f2:.4f}")
-    print(f"[B1] fitness sum = {f1_norm + f2:.4f}")
+    print(f"[B1] f1={f1:.1f}mm  f2={f2:.4f}  f_sum={f1_norm + f2:.4f}")
+    return {
+        "f1_mm": f1, "f1_norm": f1_norm, "f2": f2, "f_sum": f1_norm + f2,
+        "fabric_state": fabric_state, "constraints": constraints,
+        "V_centered_by_id": V_centered_by_id, "lattice": lattice,
+        "kappas_by_id": kappas_by_id, "transforms": transforms,
+        "instance": instance,
+    }
 
-    # ── 8. Visualise ──────────────────────────────────────────────────────────
-    visualize_layout(fabric_state, instance.texture,
+
+def main():
+    result = run(GARMENT_TYPE, num_bodies=1)
+    visualize_layout(result["fabric_state"], result["instance"].texture,
                      title="B1 — Greedy seam-order + greedy kappa")
-    plot_seam_mismatch(constraints, V_centered_by_id, lattice, kappas_by_id, K, transforms,
-                       title="B1 — Seam Phase Mismatch")
+    plot_seam_mismatch(result["constraints"], result["V_centered_by_id"],
+                       result["lattice"], result["kappas_by_id"], K,
+                       result["transforms"], title="B1 — Seam Phase Mismatch")
 
 
 if __name__ == "__main__":

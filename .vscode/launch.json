@@ -123,10 +123,45 @@
         },
 
         {
+            "name": "Run experiments",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/run_experiments.py",
+            "args": [
+                "--garment", "lower",
+                "--wallpaper", "stripes",
+                "--num_bodies", "10",
+                "--runs", "20",
+                "--pop", "50",
+                "--gens", "10",
+                "--w1", "1.0",
+                "--w2", "10.0"
+                // To resume: add "--resume", "results/experiments/upper/<timestamp>"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
+            },
+            "console": "integratedTerminal"
+        },
+
+        {
             "name": "Baseline 0",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/run_baseline_b0.py",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
+            },
+            "console": "integratedTerminal"
+        },
+
+        {
+            "name": "Baseline 2",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/run_baseline_b2.py",
             "cwd": "${workspaceFolder}",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
