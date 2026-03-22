@@ -5,26 +5,16 @@
 #   ./run_experiments_loop.sh [args for run_experiments.py]
 #
 # Example:
-#   ./run_experiments_loop.sh --garment lower --num_bodies 10 --runs 20 --pop 50 --gens 10 --w1 1.0 --w2 10.0
+#   ./run_experiments_loop.sh --garment lower --num_bodies 5 10 25 50 100 --runs 20 --pop 50 --gens 10 --w1 1.0 --w2 10.0
 #
-# On failure the script finds the latest results directory and resumes
-# automatically.  Exits 0 only when run_experiments.py reports all runs done.
+# run_experiments.py handles its own resume logic by scanning the results
+# directory — just re-run the same command on failure.  This wrapper retries
+# automatically until all body counts and seeds are complete (exit 0).
 
 MAX_RETRIES=200
 SLEEP_ON_FAIL=5
 
-# Extract --garment value from args to locate the results directory.
-GARMENT="upper"
-args=("$@")
-for i in "${!args[@]}"; do
-    if [ "${args[$i]}" = "--garment" ]; then
-        GARMENT="${args[$((i+1))]}"
-    fi
-done
-
-RESULTS_BASE="results/experiments/$GARMENT"
-
-echo "[loop] garment=$GARMENT  results_base=$RESULTS_BASE"
+echo "[loop] args: $@"
 
 for attempt in $(seq 1 $MAX_RETRIES); do
     echo ""
@@ -32,17 +22,7 @@ for attempt in $(seq 1 $MAX_RETRIES); do
     echo "[loop] Attempt $attempt / $MAX_RETRIES"
     echo "=========================================="
 
-    # Find the most recently modified results directory (if any).
-    LATEST=$(ls -td "$RESULTS_BASE"/[0-9]* 2>/dev/null | head -1)
-
-    if [ -z "$LATEST" ]; then
-        echo "[loop] No existing results — fresh start."
-        python run_experiments.py "$@"
-    else
-        echo "[loop] Resuming from $LATEST"
-        python run_experiments.py --resume "$LATEST"
-    fi
-
+    python run_experiments.py "$@"
     EXIT_CODE=$?
 
     if [ $EXIT_CODE -eq 0 ]; then

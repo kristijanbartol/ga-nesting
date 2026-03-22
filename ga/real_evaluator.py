@@ -372,14 +372,16 @@ class RealEvaluator:
                 it.name = f"body_{b}/{base_it.name}"
 
                 pid = _pid(base_it)
-                genome_idx = b * M + item_idx  # flat index into kappa / rho
+                genome_idx = b * M + item_idx  # flat index into rho (per-body)
 
-                # Grain rotation (rho)
+                # Grain rotation (rho): per body per patch
                 rho_val = int(g.rho[genome_idx]) % 4 if genome_idx < g.rho.size else 0
                 it.set_rotation(float(rho_val * 90))
 
-                # Phase offset (kappa)
-                k = int(g.kappa[genome_idx]) if genome_idx < g.kappa.size else 0
+                # Phase offset (kappa): shared across bodies — only patch index
+                # matters, not body index.  All bodies use the same relative kappa
+                # assignment so seam alignment (f2) is identical across bodies.
+                k = int(g.kappa[item_idx]) if item_idx < g.kappa.size else 0
                 it.phase_offset = ((k / float(K)) * tx, (k / float(K)) * ty)
 
                 all_items.append(it)
@@ -387,7 +389,11 @@ class RealEvaluator:
         # --- STEP 4: Nest all N*M items on one fabric roll -> f1 ---
         num_total = N * M
         pi = None
-        if g.pi is not None and getattr(g.pi, "size", 0) == num_total:
+        if g.pi is not None and g.pi.size == M:
+            # Shared M-patch permutation expanded to body-major N*M order:
+            # all patches of body 0 in pi-order, then body 1, etc.
+            pi = [b * M + int(patch_idx) for b in range(N) for patch_idx in g.pi]
+        elif g.pi is not None and g.pi.size == num_total:
             pi = [int(x) for x in g.pi.tolist()]
 
         # rho for the engine call: flat array indexed by position in all_items
@@ -406,9 +412,9 @@ class RealEvaluator:
         ind.meta["fabric_state"] = fabric_state
 
         # --- STEP 5: f2 — phase mismatch averaged across N bodies ---
-        # Each body shares the same seam structure (same weighted_constraints and Tsol)
-        # but may have different kappa/rho assignments.
-        # f2 is averaged over bodies so it stays in [0, 0.5*num_seams] regardless of N.
+        # All bodies share the same kappa (seam alignment is body-invariant).
+        # rho can differ per body (fixed at 0 in experiments for now).
+        # f2 is averaged over bodies so it stays scale-invariant w.r.t. N.
 
         f2_total = 0.0
         for b in range(N):
@@ -418,14 +424,14 @@ class RealEvaluator:
                 Ti = Tsol.get(c.patch_i, Rigid2D(0, 0, 0))
                 Tj = Tsol.get(c.patch_j, Rigid2D(0, 0, 0))
 
-                # Map patch_id -> flat genome index for this body using
-                # pid_to_item_idx (NOT pid-1, which breaks for non-sequential IDs).
-                gi_i = b * M + pid_to_item_idx[c.patch_i]
-                gi_j = b * M + pid_to_item_idx[c.patch_j]
-                ki = int(g.kappa[gi_i]) if gi_i < g.kappa.size else 0
-                kj = int(g.kappa[gi_j]) if gi_j < g.kappa.size else 0
-                rho_i = int(g.rho[gi_i]) % 4 if gi_i < g.rho.size else 0
-                rho_j = int(g.rho[gi_j]) % 4 if gi_j < g.rho.size else 0
+                # kappa: shared across bodies — index by patch only.
+                # rho: per body per patch — index by b*M + item_idx.
+                ii = pid_to_item_idx[c.patch_i]
+                ij = pid_to_item_idx[c.patch_j]
+                ki = int(g.kappa[ii]) if ii < g.kappa.size else 0
+                kj = int(g.kappa[ij]) if ij < g.kappa.size else 0
+                rho_i = int(g.rho[b * M + ii]) % 4 if (b * M + ii) < g.rho.size else 0
+                rho_j = int(g.rho[b * M + ij]) % 4 if (b * M + ij) < g.rho.size else 0
 
                 # Use the static per-seam importance as the f2 weight.
                 # c.weight was set to seam importance in weighted_constraints above.

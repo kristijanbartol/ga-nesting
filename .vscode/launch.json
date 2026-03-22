@@ -130,13 +130,13 @@
             "args": [
                 "--garment", "lower",
                 "--wallpaper", "stripes",
-                "--num_bodies", "10",
+                "--num_bodies", "5", "10", "25", "50", "100",
                 "--runs", "20",
                 "--pop", "50",
                 "--gens", "10",
                 "--w1", "1.0",
                 "--w2", "10.0"
-                // To resume: add "--resume", "results/experiments/upper/<timestamp>"
+                // Auto-resumes on re-run — no --resume flag needed.
             ],
             "cwd": "${workspaceFolder}",
             "env": {

@@ -1,14 +1,20 @@
 """Systematic experiment runner for GA-Nesting.
 
-Runs B0 and B1 baselines once (deterministic), then the GA N times with
-seeds 0..N-1.  Results are written incrementally to:
+Sweeps over a list of num_bodies values with interleaved seed iteration:
+  outer loop = seed (0..runs-1)
+  inner loop = num_bodies
 
-  results/experiments/{garment}/{timestamp}/results.json
-  results/experiments/{garment}/{timestamp}/convergence.json
+This ensures one result per body-count is available quickly before
+accumulating more statistical samples.
 
-Pass --resume <dir> to continue an interrupted run from the last completed
-seed.  If all seeds are already done, a completion message is printed and
-the script exits without touching any files.
+Directory layout:
+  results/experiments/{garment}/bodies_{N}/{timestamp}/results.json
+  results/experiments/{garment}/bodies_{N}/{timestamp}/convergence.json
+
+Auto-resume: on each invocation the script scans each bodies_{N} directory
+for the latest partial run.  Baselines (B0/B1/B2) are run once per body
+count on first encounter.  Completed seeds are skipped.  Just re-run the
+same command after a crash.
 
 results.json schema:
   {
@@ -17,6 +23,7 @@ results.json schema:
                   fabric_width_mm, w1, w2, wallpaper},
     "b0":        {f1_mm, f1_norm, f2, f_sum},
     "b1":        {f1_mm, f1_norm, f2, f_sum},
+    "b2":        {f1_mm, f1_norm, f2, f_sum},
     "ga":        [{seed, f1_mm, f1_norm, f2, f_sum}, ...]
   }
 
@@ -35,6 +42,8 @@ from run_baseline_b0 import run as run_b0
 from run_baseline_b1 import run as run_b1
 from run_baseline_b2 import run as run_b2
 
+FABRIC_WIDTH_MM = 150.0 * 10.0
+
 
 def parse_args():
     p = argparse.ArgumentParser(description="Run systematic GA-Nesting experiments.")
@@ -49,21 +58,19 @@ def parse_args():
                    help="GA population size (default: 50)")
     p.add_argument("--gens", type=int, default=10,
                    help="GA generations per run (default: 10)")
-    p.add_argument("--num_bodies", type=int, default=1,
-                   help="Number of bodies to nest on one fabric roll (default: 1)")
+    p.add_argument("--num_bodies", type=int, nargs="+", default=[5, 10, 25, 50, 100],
+                   help="List of body counts to sweep (default: 5 10 25 50 100)")
     p.add_argument("--w1", type=float, default=1.0,
                    help="Fitness weight for fabric height f1 (default: 1.0)")
     p.add_argument("--w2", type=float, default=10.0,
                    help="Fitness weight for seam phase mismatch f2 (default: 10.0)")
-    p.add_argument("--resume", default=None, metavar="DIR",
-                   help="Resume an interrupted run from the given results directory.")
     return p.parse_args()
 
 
-def _metrics(ind, fabric_width_mm: float) -> dict:
-    f1_mm  = float(ind.meta.get("f1_height_mm", float("nan")))
-    f2     = float(ind.meta.get("f2_phase",     float("nan")))
-    f1_norm = f1_mm / fabric_width_mm
+def _metrics(ind) -> dict:
+    f1_mm   = float(ind.meta.get("f1_height_mm", float("nan")))
+    f2      = float(ind.meta.get("f2_phase",     float("nan")))
+    f1_norm = f1_mm / FABRIC_WIDTH_MM
     return {
         "f1_mm":   f1_mm,
         "f1_norm": f1_norm,
@@ -73,7 +80,7 @@ def _metrics(ind, fabric_width_mm: float) -> dict:
     }
 
 
-def _print_summary(results):
+def _print_summary(results, out_dir):
     b0 = results["b0"]
     b1 = results["b1"]
     ga = results["ga"]
@@ -82,8 +89,9 @@ def _print_summary(results):
     sums = [r["f_sum"]  for r in ga]
     f1s  = [r["f1_mm"]  for r in ga]
     f2s  = [r["f2"]     for r in ga]
+    cfg  = results["config"]
     print("\n" + "=" * 60)
-    print(f"[exp] Results saved to {results.get('_out_dir', '?')}")
+    print(f"[exp] bodies={cfg['num_bodies']}  Results: {out_dir}")
     print("=" * 60)
     print(f"  {'':8s}  {'f1_mm':>10s}  {'f2':>8s}  {'f_sum':>8s}")
     print(f"  {'B0':8s}  {b0['f1_mm']:>10.1f}  {b0['f2']:>8.4f}  {b0['f_sum']:>8.4f}")
@@ -97,12 +105,33 @@ def _print_summary(results):
     print(f"  {'GA max':8s}  {np.max(f1s):>10.1f}  {np.max(f2s):>8.4f}  {np.max(sums):>8.4f}")
 
 
-def main():
-    args = parse_args()
+def _find_latest_run_dir(bodies_base: str):
+    """Return the most recently modified timestamped subdir that has results.json."""
+    try:
+        entries = sorted(
+            [e for e in os.scandir(bodies_base) if e.is_dir()],
+            key=lambda e: e.stat().st_mtime,
+            reverse=True,
+        )
+    except FileNotFoundError:
+        return None
+    for e in entries:
+        if os.path.exists(os.path.join(e.path, "results.json")):
+            return e.path
+    return None
 
-    # ── Resume or fresh start ─────────────────────────────────────────────────
-    if args.resume:
-        out_dir      = args.resume
+
+def _init_body_run(num_bodies: int, args) -> dict:
+    """Load or create the run state for a given num_bodies.
+
+    Creates the output directory and runs baselines if starting fresh.
+    Returns a state dict used by _run_one_seed().
+    """
+    bodies_base = os.path.join("results", "experiments", args.garment, f"bodies_{num_bodies}")
+    latest      = _find_latest_run_dir(bodies_base)
+
+    if latest is not None:
+        out_dir      = latest
         results_path = os.path.join(out_dir, "results.json")
         conv_path    = os.path.join(out_dir, "convergence.json")
 
@@ -110,71 +139,70 @@ def main():
             results = json.load(f)
         convergence = json.load(open(conv_path)) if os.path.exists(conv_path) else []
 
-        cfg  = results["config"]
-        total_runs  = cfg["runs"]
-        completed   = {r["seed"] for r in results["ga"]}
+        cfg        = results["config"]
+        completed  = {r["seed"] for r in results["ga"]}
+        total_runs = cfg["runs"]
 
-        if len(completed) >= total_runs:
-            print(f"[exp] All {total_runs} experiments already complete in '{out_dir}'.")
-            print("[exp] Delete the directory if you want to rerun from scratch.")
-            _print_summary({**results, "_out_dir": out_dir})
-            return
-
-        # B2 may be absent from results saved before B2 was added.
+        # Back-fill B2 if absent from older results file.
         if "b2" not in results:
-            print("\n[exp] Running missing B2 baseline...")
-            b2 = run_b2(args.garment, num_bodies=args.num_bodies)
+            print(f"\n[exp] bodies={num_bodies}: back-filling missing B2 baseline...")
+            b2 = run_b2(args.garment, num_bodies=num_bodies)
             results["b2"] = {k: b2[k] for k in ("f1_mm", "f1_norm", "f2", "f_sum")}
             with open(results_path, "w") as f:
                 json.dump(results, f, indent=2)
 
-        print(f"[exp] Resuming '{out_dir}': {len(completed)}/{total_runs} seeds done,"
-              f" continuing from seed {max(completed) + 1 if completed else 0}.")
+        num_bodies_cfg = cfg["num_bodies"]
+        pop            = cfg["pop"]
+        gens           = cfg["gens"]
+        w1             = cfg["w1"]
+        w2             = cfg["w2"]
+        wallpaper      = cfg.get("wallpaper", "stripes")
 
-        # Restore config values for evaluator / inst setup below.
-        args.garment     = results["garment"]
-        args.runs        = total_runs
-        args.pop         = cfg["pop"]
-        args.gens        = cfg["gens"]
-        args.num_bodies  = cfg["num_bodies"]
-        args.w1          = cfg["w1"]
-        args.w2          = cfg["w2"]
-        args.wallpaper   = cfg.get("wallpaper", "stripes")
+        print(f"[exp] bodies={num_bodies}: loaded '{out_dir}'"
+              f"  ({len(completed)}/{total_runs} seeds done)")
 
     else:
         completed   = set()
         convergence = []
         timestamp   = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_dir     = os.path.join("results", "experiments", args.garment, timestamp)
+        out_dir     = os.path.join(bodies_base, timestamp)
         os.makedirs(out_dir, exist_ok=True)
 
-        results_path = os.path.join(out_dir, "results.json")
-        conv_path    = os.path.join(out_dir, "convergence.json")
+        results_path   = os.path.join(out_dir, "results.json")
+        conv_path      = os.path.join(out_dir, "convergence.json")
+        total_runs     = args.runs
+        num_bodies_cfg = num_bodies
+        pop            = args.pop
+        gens           = args.gens
+        w1             = args.w1
+        w2             = args.w2
+        wallpaper      = args.wallpaper
 
         cfg_dict = {
-            "runs": args.runs, "pop": args.pop, "gens": args.gens,
-            "num_bodies": args.num_bodies,
+            "runs": total_runs, "pop": pop, "gens": gens,
+            "num_bodies": num_bodies_cfg,
             "K": 8, "period_u_mm": 50.0, "period_v_mm": 50.0,
-            "fabric_width_mm": 150.0 * 10.0,
-            "w1": args.w1, "w2": args.w2,
-            "wallpaper": args.wallpaper,
+            "fabric_width_mm": FABRIC_WIDTH_MM,
+            "w1": w1, "w2": w2,
+            "wallpaper": wallpaper,
         }
 
-        # ── Baselines (deterministic — run once) ─────────────────────────────
-        print("\n" + "=" * 60)
-        print(f"[exp] Baseline B0  garment={args.garment}  num_bodies={args.num_bodies}")
-        print("=" * 60)
-        b0 = run_b0(args.garment, num_bodies=args.num_bodies)
+        print(f"\n[exp] bodies={num_bodies}: running baselines...")
 
         print("\n" + "=" * 60)
-        print(f"[exp] Baseline B1  garment={args.garment}  num_bodies={args.num_bodies}")
+        print(f"[exp] Baseline B0  garment={args.garment}  num_bodies={num_bodies}")
         print("=" * 60)
-        b1 = run_b1(args.garment, num_bodies=args.num_bodies)
+        b0 = run_b0(args.garment, num_bodies=num_bodies)
 
         print("\n" + "=" * 60)
-        print(f"[exp] Baseline B2  garment={args.garment}  num_bodies={args.num_bodies}")
+        print(f"[exp] Baseline B1  garment={args.garment}  num_bodies={num_bodies}")
         print("=" * 60)
-        b2 = run_b2(args.garment, num_bodies=args.num_bodies)
+        b1 = run_b1(args.garment, num_bodies=num_bodies)
+
+        print("\n" + "=" * 60)
+        print(f"[exp] Baseline B2  garment={args.garment}  num_bodies={num_bodies}")
+        print("=" * 60)
+        b2 = run_b2(args.garment, num_bodies=num_bodies)
 
         results = {
             "garment":   args.garment,
@@ -188,7 +216,9 @@ def main():
         with open(results_path, "w") as f:
             json.dump(results, f, indent=2)
 
-    # ── GA setup (evaluator initialised once, reused for all seeds) ──────────
+        print(f"[exp] bodies={num_bodies}: fresh start at '{out_dir}'")
+
+    # ── Evaluator and GA instance (kept alive for all seeds of this config) ──
     eval_cfg = RealEvaluatorConfig(
         garment_part=args.garment,
         latest_root="results/pattern/latest",
@@ -196,71 +226,118 @@ def main():
         period_u_mm=50.0,
         period_v_mm=50.0,
         K=8,
-        fabric_width_mm=150.0 * 10.0,
-        num_bodies=args.num_bodies,
-        wallpaper_group=args.wallpaper,
-        w1=args.w1,
-        w2=args.w2,
+        fabric_width_mm=FABRIC_WIDTH_MM,
+        num_bodies=num_bodies_cfg,
+        wallpaper_group=wallpaper,
+        w1=w1,
+        w2=w2,
     )
-    evaluator = RealEvaluator(eval_cfg)
+    evaluator   = RealEvaluator(eval_cfg)
     num_patches = len(evaluator.patch_ids)
 
     inst = GAInstance(
         num_patches=num_patches,
         K=eval_cfg.K,
         num_landmarks=evaluator.instance.num_sampled_landmarks,
-        num_bodies=args.num_bodies,
-        fixed_rho=np.zeros(num_patches * args.num_bodies, dtype=int),
+        num_bodies=num_bodies_cfg,
+        fixed_rho=np.zeros(num_patches * num_bodies_cfg, dtype=int),
         fixed_pi=None,
         fixed_h=None,
         num_heuristics=3,
     )
 
-    def _flush():
-        with open(results_path, "w") as f:
-            json.dump(results, f, indent=2)
-        with open(conv_path, "w") as f:
-            json.dump(convergence, f, indent=2)
+    return {
+        "num_bodies":   num_bodies_cfg,
+        "total_runs":   total_runs,
+        "pop":          pop,
+        "gens":         gens,
+        "out_dir":      out_dir,
+        "results_path": results_path,
+        "conv_path":    conv_path,
+        "results":      results,
+        "convergence":  convergence,
+        "completed":    completed,
+        "evaluator":    evaluator,
+        "inst":         inst,
+        "eval_cfg":     eval_cfg,
+    }
 
-    # ── GA runs (results flushed after each seed) ─────────────────────────────
+
+def _run_one_seed(state: dict, seed: int) -> None:
+    """Run a single GA seed for the given body-count state (skips if done)."""
+    if seed in state["completed"]:
+        print(f"[exp] bodies={state['num_bodies']}  seed={seed} already done, skipping.")
+        return
+
+    num_bodies = state["num_bodies"]
+    pop        = state["pop"]
+    gens       = state["gens"]
+    total_runs = state["total_runs"]
+    done       = len(state["completed"])
+
+    print("\n" + "=" * 60)
+    print(f"[exp] GA  bodies={num_bodies}  seed={seed}"
+          f"  pop={pop}  gens={gens}  ({done}/{total_runs} done)")
+    print("=" * 60)
+
+    ga_cfg = GAConfig(
+        seed=seed,
+        population_size=pop,
+        generations=gens,
+        elite_count=4,
+        tournament_k=4,
+        crossover_prob=0.7,
+        mutation_prob=0.7,
+        prob_flip_kappa=0.35,
+        weight_sigma=0.20,
+    )
+
+    pop_result, conv_log = run_ga(state["inst"], state["evaluator"], ga_cfg)
+    best = min(pop_result, key=lambda ind: ind.fitness.values.sum())
+
+    run_metrics = {"seed": seed, **_metrics(best)}
+    state["results"]["ga"].append(run_metrics)
+    state["convergence"].append({"seed": seed, "log": conv_log})
+    state["completed"].add(seed)
+
+    with open(state["results_path"], "w") as f:
+        json.dump(state["results"], f, indent=2)
+    with open(state["conv_path"], "w") as f:
+        json.dump(state["convergence"], f, indent=2)
+
+    done = len(state["completed"])
+    print(f"[exp] bodies={num_bodies}  seed={seed}"
+          f"  f1={run_metrics['f1_mm']:.1f}mm"
+          f"  f2={run_metrics['f2']:.4f}  f_sum={run_metrics['f_sum']:.4f}"
+          f"  ({done}/{total_runs} done)")
+
+
+def main():
+    args = parse_args()
+
+    print(f"[exp] garment={args.garment}  num_bodies={args.num_bodies}"
+          f"  runs={args.runs}  pop={args.pop}  gens={args.gens}")
+
+    # Initialise all body-count configurations up front (runs baselines for new ones).
+    print("\n[exp] Initialising body-count configurations...")
+    states = {}
+    for num_bodies in args.num_bodies:
+        states[num_bodies] = _init_body_run(num_bodies, args)
+
+    # Interleaved: outer = seed, inner = body count.
     for seed in range(args.runs):
-        if seed in completed:
-            print(f"[exp] seed={seed} already done, skipping.")
-            continue
+        print(f"\n{'#' * 60}")
+        print(f"# seed={seed}")
+        print(f"{'#' * 60}")
+        for num_bodies in args.num_bodies:
+            state = states[num_bodies]
+            if len(state["completed"]) < state["total_runs"]:
+                _run_one_seed(state, seed)
 
-        print("\n" + "=" * 60)
-        print(f"[exp] GA run {seed + 1}/{args.runs}  seed={seed}"
-              f"  garment={args.garment}  pop={args.pop}  gens={args.gens}"
-              f"  bodies={args.num_bodies}")
-        print("=" * 60)
-
-        ga_cfg = GAConfig(
-            seed=seed,
-            population_size=args.pop,
-            generations=args.gens,
-            elite_count=4,
-            tournament_k=4,
-            crossover_prob=0.7,
-            mutation_prob=0.7,
-            prob_flip_kappa=0.35,
-            weight_sigma=0.20,
-        )
-
-        pop, conv_log = run_ga(inst, evaluator, ga_cfg)
-        best = min(pop, key=lambda ind: ind.fitness.values.sum())
-
-        run_metrics = {"seed": seed, **_metrics(best, eval_cfg.fabric_width_mm)}
-        results["ga"].append(run_metrics)
-        convergence.append({"seed": seed, "log": conv_log})
-        completed.add(seed)
-        _flush()
-
-        print(f"[exp] seed={seed}  f1={run_metrics['f1_mm']:.1f}mm"
-              f"  f2={run_metrics['f2']:.4f}  f_sum={run_metrics['f_sum']:.4f}"
-              f"  ({len(completed)}/{args.runs} done)")
-
-    print(f"\n[exp] All {args.runs} experiments complete.")
-    _print_summary({**results, "_out_dir": out_dir})
+    print(f"\n[exp] All runs complete.")
+    for num_bodies in args.num_bodies:
+        state = states[num_bodies]
+        _print_summary(state["results"], state["out_dir"])
 
 
 if __name__ == "__main__":
