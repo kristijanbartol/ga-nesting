@@ -478,13 +478,14 @@ class RealEvaluator:
         else:
             f4 = 0.0
 
-        # Normalise f1 by fabric width so both objectives are dimensionless and
-        # w1 / w2 become true priority knobs rather than unit-conversion factors.
-        # f1_norm ≈ 0.5–3.0  (fabric height as a multiple of fabric width)
-        # f2      ≈ 0.0–0.5 per seam (phase mismatch, already normalised)
+        # Normalise f1 per body and by fabric width so it is body-count invariant,
+        # matching f2 which is already averaged across bodies.
+        # f1_norm = average per-body height / fabric_width  ≈ 0.5–3.0
+        # f2      = average per-body phase mismatch         ≈ 0.0–0.5 per seam
         # f4      ≈ 0.0–0.1 typical (area deviation fraction)
-        f1_norm = f1 / self.cfg.fabric_width_mm
+        f1_norm = f1 / (self.cfg.fabric_width_mm * N)
         ind.meta["f1_height_mm"] = f1
+        ind.meta["f1_norm"] = f1_norm
         ind.meta["f2_phase"] = f2
         ind.meta["f4_area_dev"] = f4
         print(f"         [geo={t_geo:.1f}s  stage2={t_stage2:.2f}s  nesting={t_nest:.2f}s]"

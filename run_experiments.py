@@ -67,10 +67,11 @@ def parse_args():
     return p.parse_args()
 
 
-def _metrics(ind) -> dict:
+def _metrics(ind, num_bodies: int) -> dict:
     f1_mm   = float(ind.meta.get("f1_height_mm", float("nan")))
     f2      = float(ind.meta.get("f2_phase",     float("nan")))
-    f1_norm = f1_mm / FABRIC_WIDTH_MM
+    # Per-body normalisation matches f2 (already averaged across bodies).
+    f1_norm = f1_mm / (FABRIC_WIDTH_MM * num_bodies)
     return {
         "f1_mm":   f1_mm,
         "f1_norm": f1_norm,
@@ -295,7 +296,7 @@ def _run_one_seed(state: dict, seed: int) -> None:
     pop_result, conv_log = run_ga(state["inst"], state["evaluator"], ga_cfg)
     best = min(pop_result, key=lambda ind: ind.fitness.values.sum())
 
-    run_metrics = {"seed": seed, **_metrics(best)}
+    run_metrics = {"seed": seed, **_metrics(best, num_bodies)}
     state["results"]["ga"].append(run_metrics)
     state["convergence"].append({"seed": seed, "log": conv_log})
     state["completed"].add(seed)

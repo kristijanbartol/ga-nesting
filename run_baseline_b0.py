@@ -84,7 +84,7 @@ def run(garment_type: str = GARMENT_TYPE, num_bodies: int = 1) -> dict:
     fabric_state = engine.nest(all_items)
 
     f1 = fabric_state.total_height
-    f1_norm = f1 / FABRIC_WIDTH_MM
+    f1_norm = f1 / (FABRIC_WIDTH_MM * num_bodies)
 
     importance_by_name = _seam_importance_map(instance)
     constraints = load_seam_constraints_from_dir(

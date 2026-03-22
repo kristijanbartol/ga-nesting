@@ -231,7 +231,7 @@ def run(garment_type: str = GARMENT_TYPE, num_bodies: int = 1) -> dict:
     fabric_state = engine.nest(all_items, permutation=permutation)
 
     f1 = fabric_state.total_height
-    f1_norm = f1 / FABRIC_WIDTH_MM
+    f1_norm = f1 / (FABRIC_WIDTH_MM * num_bodies)
 
     transforms = {pid: Rigid2D(0.0, 0.0, 0.0) for pid in V_centered_by_id}
     f2 = 0.0
