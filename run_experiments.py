@@ -64,18 +64,22 @@ def parse_args():
                    help="Fitness weight for fabric height f1 (default: 1.0)")
     p.add_argument("--w2", type=float, default=10.0,
                    help="Fitness weight for seam phase mismatch f2 (default: 10.0)")
+    p.add_argument("--w4", type=float, default=10.0,
+                   help="Fitness weight for 3D patch area deviation f4 (default: 10.0)")
     return p.parse_args()
 
 
 def _metrics(ind, num_bodies: int) -> dict:
     f1_mm   = float(ind.meta.get("f1_height_mm", float("nan")))
     f2      = float(ind.meta.get("f2_phase",     float("nan")))
+    f4      = float(ind.meta.get("f4_area_dev",  float("nan")))
     # Per-body normalisation matches f2 (already averaged across bodies).
     f1_norm = f1_mm / (FABRIC_WIDTH_MM * num_bodies)
     return {
         "f1_mm":   f1_mm,
         "f1_norm": f1_norm,
         "f2":      f2,
+        "f4":      f4,
         # Unweighted sum — directly comparable to baseline f_sum values.
         "f_sum":   f1_norm + f2,
     }
@@ -90,20 +94,26 @@ def _print_summary(results, out_dir):
     sums = [r["f_sum"]  for r in ga]
     f1s  = [r["f1_mm"]  for r in ga]
     f2s  = [r["f2"]     for r in ga]
+    f4s  = [r.get("f4", float("nan")) for r in ga]
     cfg  = results["config"]
     print("\n" + "=" * 60)
     print(f"[exp] bodies={cfg['num_bodies']}  Results: {out_dir}")
     print("=" * 60)
-    print(f"  {'':8s}  {'f1_mm':>10s}  {'f2':>8s}  {'f_sum':>8s}")
-    print(f"  {'B0':8s}  {b0['f1_mm']:>10.1f}  {b0['f2']:>8.4f}  {b0['f_sum']:>8.4f}")
-    print(f"  {'B1':8s}  {b1['f1_mm']:>10.1f}  {b1['f2']:>8.4f}  {b1['f_sum']:>8.4f}")
+    print(f"  {'':8s}  {'f1_mm':>10s}  {'f2':>8s}  {'f4':>8s}  {'f_sum':>8s}")
+    print(f"  {'B0':8s}  {b0['f1_mm']:>10.1f}  {b0['f2']:>8.4f}  {'0.0000':>8s}  {b0['f_sum']:>8.4f}")
+    print(f"  {'B1':8s}  {b1['f1_mm']:>10.1f}  {b1['f2']:>8.4f}  {'0.0000':>8s}  {b1['f_sum']:>8.4f}")
     b2 = results.get("b2")
     if b2:
-        print(f"  {'B2':8s}  {b2['f1_mm']:>10.1f}  {b2['f2']:>8.4f}  {b2['f_sum']:>8.4f}")
-    print(f"  {'GA mean':8s}  {np.mean(f1s):>10.1f}  {np.mean(f2s):>8.4f}  {np.mean(sums):>8.4f}")
-    print(f"  {'GA std':8s}  {np.std(f1s):>10.1f}  {np.std(f2s):>8.4f}  {np.std(sums):>8.4f}")
-    print(f"  {'GA min':8s}  {np.min(f1s):>10.1f}  {np.min(f2s):>8.4f}  {np.min(sums):>8.4f}")
-    print(f"  {'GA max':8s}  {np.max(f1s):>10.1f}  {np.max(f2s):>8.4f}  {np.max(sums):>8.4f}")
+        print(f"  {'B2':8s}  {b2['f1_mm']:>10.1f}  {b2['f2']:>8.4f}  {'0.0000':>8s}  {b2['f_sum']:>8.4f}")
+    f4_valid = [v for v in f4s if not np.isnan(v)]
+    f4_mean = np.mean(f4_valid) if f4_valid else float("nan")
+    f4_std  = np.std(f4_valid)  if f4_valid else float("nan")
+    f4_min  = np.min(f4_valid)  if f4_valid else float("nan")
+    f4_max  = np.max(f4_valid)  if f4_valid else float("nan")
+    print(f"  {'GA mean':8s}  {np.mean(f1s):>10.1f}  {np.mean(f2s):>8.4f}  {f4_mean:>8.4f}  {np.mean(sums):>8.4f}")
+    print(f"  {'GA std':8s}  {np.std(f1s):>10.1f}  {np.std(f2s):>8.4f}  {f4_std:>8.4f}  {np.std(sums):>8.4f}")
+    print(f"  {'GA min':8s}  {np.min(f1s):>10.1f}  {np.min(f2s):>8.4f}  {f4_min:>8.4f}  {np.min(sums):>8.4f}")
+    print(f"  {'GA max':8s}  {np.max(f1s):>10.1f}  {np.max(f2s):>8.4f}  {f4_max:>8.4f}  {np.max(sums):>8.4f}")
 
 
 def _find_latest_run_dir(bodies_base: str):
@@ -157,6 +167,7 @@ def _init_body_run(num_bodies: int, args) -> dict:
         gens           = cfg["gens"]
         w1             = cfg["w1"]
         w2             = cfg["w2"]
+        w4             = cfg.get("w4", args.w4)
         wallpaper      = cfg.get("wallpaper", "stripes")
 
         print(f"[exp] bodies={num_bodies}: loaded '{out_dir}'"
@@ -177,6 +188,7 @@ def _init_body_run(num_bodies: int, args) -> dict:
         gens           = args.gens
         w1             = args.w1
         w2             = args.w2
+        w4             = args.w4
         wallpaper      = args.wallpaper
 
         cfg_dict = {
@@ -184,7 +196,7 @@ def _init_body_run(num_bodies: int, args) -> dict:
             "num_bodies": num_bodies_cfg,
             "K": 8, "period_u_mm": 50.0, "period_v_mm": 50.0,
             "fabric_width_mm": FABRIC_WIDTH_MM,
-            "w1": w1, "w2": w2,
+            "w1": w1, "w2": w2, "w4": w4,
             "wallpaper": wallpaper,
         }
 
@@ -232,6 +244,7 @@ def _init_body_run(num_bodies: int, args) -> dict:
         wallpaper_group=wallpaper,
         w1=w1,
         w2=w2,
+        w4=w4,
     )
     evaluator   = RealEvaluator(eval_cfg)
     num_patches = len(evaluator.patch_ids)
@@ -307,9 +320,10 @@ def _run_one_seed(state: dict, seed: int) -> None:
         json.dump(state["convergence"], f, indent=2)
 
     done = len(state["completed"])
+    f4_str = f"{run_metrics['f4']:.4f}" if not np.isnan(run_metrics.get("f4", float("nan"))) else "n/a"
     print(f"[exp] bodies={num_bodies}  seed={seed}"
           f"  f1={run_metrics['f1_mm']:.1f}mm"
-          f"  f2={run_metrics['f2']:.4f}  f_sum={run_metrics['f_sum']:.4f}"
+          f"  f2={run_metrics['f2']:.4f}  f4={f4_str}  f_sum={run_metrics['f_sum']:.4f}"
           f"  ({done}/{total_runs} done)")
 
 

@@ -5,8 +5,8 @@ We formulate garment pattern layout as a mixed-type optimisation problem
 and solve it with a multi-objective genetic algorithm.
 The pipeline maps a genotype encoding seam positions, patch orientations,
 texture phase offsets, and nesting parameters to a fabric layout,
-which is then scored by three objectives: fabric efficiency,
-texture alignment across seams, and garment fit quality.
+which is then scored by two objectives: fabric efficiency
+and texture alignment across seams.
 
 % ---------------------------------------------------------------------------
 \subsection{Problem Formulation}
@@ -91,8 +91,7 @@ A candidate solution is encoded as
 \boldsymbol{\rho},\,
 \boldsymbol{\kappa},\,
 \pi,\,
-h,\,
-\lambda_s
+h
 \rangle.
 \]
 
@@ -138,15 +137,6 @@ is placed on.
 Optimising $\boldsymbol{\kappa}$ allows the EA to align stripe or grid bands
 across seams without moving the patches on the fabric.
 
-\paragraph{Parameterization hyperparameter ($\lambda_s$).}
-The seam straightness weight
-\[
-\lambda_s \in \{2^0, 2^1, \dots, 2^7\}
-\]
-controls the strength of the regularization term in the parameterization
-energy that encourages seam boundaries to be straight lines in 2D.
-It is applied uniformly across all seams.
-
 \paragraph{Nesting variables ($\pi, h$).}
 The permutation $\pi \in S_n$ defines the order in which charts are placed
 on the fabric, and $h \in \mathcal{H}$ ($|\mathcal{H}|=3$) selects the
@@ -162,7 +152,7 @@ bilinear interpolation and snapped to mesh vertices.
 Geodesic paths between corresponding keypoints define the seam network,
 along which the mesh is cut to yield 3D patches.
 Each patch is then flattened to 2D by LSCM parameterization, with a
-seam-straightness regularization weighted by $\lambda_s$.
+fixed seam-straightness regularization.
 
 \subsubsection{Stage 2: Global Phase Alignment.}
 \label{sec:stage2}
@@ -204,9 +194,9 @@ Charts must satisfy non-overlap and containment constraints:
 
 The fitness vector is
 \[
-\mathbf{F}(\mathbf{x}) = [w_1 f_1,\; w_2 f_2,\; w_3 f_3]^T,
+\mathbf{F}(\mathbf{x}) = [w_1 f_1,\; w_2 f_2]^T,
 \]
-where $w_1, w_2, w_3 \geq 0$ are designer-specified weights and all three
+where $w_1, w_2 \geq 0$ are designer-specified weights and both
 components are minimised.
 
 \paragraph{Fabric efficiency ($f_1$).}
@@ -255,20 +245,12 @@ and $f_2$ accumulates this over all seams weighted by importance:
 f_2(\mathbf{x}) = \sum_{s \in \mathcal{S}} w_s \cdot \mathrm{Mismatch}(s).
 \]
 
-\paragraph{Fit distortion ($f_3$).}
-\[
-f_3(\mathbf{x}) = \frac{1}{n} \sum_{i=1}^n \overline{\sigma}_i^{\,\mathrm{weft}},
-\]
-where $\overline{\sigma}_i^{\,\mathrm{weft}}$ is the mean local triangle
-stretch deviation along the weft direction between corresponding 2D and 3D
-triangles of chart $p_i$.
-
 % ---------------------------------------------------------------------------
 \subsection{Evolutionary Algorithm}
 \label{sec:ea}
 
 The mixed structure of the genotype (continuous $\boldsymbol{\delta}$,
-discrete $\boldsymbol{\rho}, \boldsymbol{\kappa}, \lambda_s, h$,
+discrete $\boldsymbol{\rho}, \boldsymbol{\kappa}, h$,
 and combinatorial $\pi$) motivates a genetic algorithm with
 variable-specific operators rather than a standard real-valued EA.
 
@@ -290,7 +272,7 @@ Each variable type uses a dedicated operator:
           independently with probability $\tfrac{1}{2}$.
     \item $\pi$: whole-permutation inheritance — one parent's permutation is
           copied in full (chosen by coin flip) to preserve permutation validity.
-    \item $h, \lambda_s$: coin flip between the two parent values.
+    \item $h$: coin flip between the two parent values.
 \end{itemize}
 
 \paragraph{Mutation.}
@@ -309,8 +291,6 @@ Each variable type uses a dedicated operator:
     \item $\pi$: swap of two randomly chosen positions with probability
           $p_\pi$, preserving permutation validity.
     \item $h$: resampled uniformly from $\mathcal{H}$ with probability $p_h$.
-    \item $\lambda_s$: resampled uniformly from $\{2^0,\dots,2^7\}$
-          with probability $p_{\lambda}$.
 \end{itemize}
 
 \paragraph{Elitism.}
