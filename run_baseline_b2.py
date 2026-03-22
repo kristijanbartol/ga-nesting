@@ -32,7 +32,7 @@ from ga.real_evaluator import load_patch_vertices_full_from_latest
 from nesting.loader import PatchLoader
 from nesting.engine import NestingEngine
 from nesting.phase_utils import TextureLattice, Rigid2D, seam_phase_mismatch
-from nesting.stage2_global_align import load_seam_constraints_from_dir
+from nesting.stage2_global_align import load_seam_constraints_from_dir, solve_global_alignment_all_components
 from nesting.vis_utils import visualize_layout, plot_seam_mismatch
 from spec import SeamPathType
 
@@ -157,14 +157,45 @@ def run(garment_type: str = GARMENT_TYPE, num_bodies: int = 1) -> dict:
 
     f1 = fabric_state.total_height
     f1_norm = f1 / (FABRIC_WIDTH_MM * num_bodies)
-    transforms = {pid: Rigid2D(0.0, 0.0, 0.0) for pid in V_centered_by_id}
 
-    print(f"[B2] f1={f1:.1f}mm  f2={best_f2:.4f}  f_sum={f1_norm + best_f2:.4f}")
+    print("[B2] Running Stage2 (LM alignment)...")
+    patch_ids = sorted(V_centered_by_id.keys())
+    T0   = {pid: Rigid2D(0.0, 0.0, 0.0) for pid in patch_ids}
+    Tsol = solve_global_alignment_all_components(
+        patch_ids=patch_ids,
+        constraints=constraints,
+        patch_vertices_by_id=V_centered_by_id,
+        lattice=lattice,
+        kappas_by_id=best_kappas,
+        K=K,
+        initial_transforms=T0,
+        max_iters=15,
+        verbose=False,
+    )
+
+    # Recompute f2 with Stage2 transforms applied.
+    f2 = 0.0
+    for c in constraints:
+        if c.patch_i not in V_centered_by_id or c.patch_j not in V_centered_by_id:
+            continue
+        Ti = Tsol.get(c.patch_i, Rigid2D(0, 0, 0))
+        Tj = Tsol.get(c.patch_j, Rigid2D(0, 0, 0))
+        f2 += seam_phase_mismatch(
+            seam_pairs=c.pairs,
+            patch_i_vertices_xy=Ti.apply(V_centered_by_id[c.patch_i]),
+            patch_j_vertices_xy=Tj.apply(V_centered_by_id[c.patch_j]),
+            lattice=lattice,
+            kappa_i=best_kappas.get(c.patch_i, 0),
+            kappa_j=best_kappas.get(c.patch_j, 0),
+            K=K, weight=c.weight,
+        )
+
+    print(f"[B2] f1={f1:.1f}mm  f2={f2:.4f}  f_sum={f1_norm + f2:.4f}")
     return {
-        "f1_mm": f1, "f1_norm": f1_norm, "f2": best_f2, "f_sum": f1_norm + best_f2,
+        "f1_mm": f1, "f1_norm": f1_norm, "f2": f2, "f_sum": f1_norm + f2,
         "fabric_state": fabric_state, "constraints": constraints,
         "V_centered_by_id": V_centered_by_id, "lattice": lattice,
-        "kappas_by_id": best_kappas, "transforms": transforms,
+        "kappas_by_id": best_kappas, "transforms": Tsol,
         "instance": instance,
     }
 
