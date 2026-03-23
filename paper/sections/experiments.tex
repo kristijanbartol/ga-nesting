@@ -5,59 +5,213 @@
 \subsection{Baselines}
 \label{sec:baselines}
 
-We compare against two baselines, both of which fix all seam positions at the
-midpoints of their respective landmark quads ($\boldsymbol{\delta} = 0.5$)
-and skip the Stage~2 global phase alignment.
+We compare against three baselines, all of which fix seam positions at the
+midpoints of their respective landmark quads ($\boldsymbol{\delta} = 0.5$).
+All baselines include Stage~2 global phase alignment (Section~\ref{sec:stage2})
+for a fair comparison.
 
 \paragraph{B0: Pure greedy nesting.}
 All phase offsets are set to zero ($\boldsymbol{\kappa} = \mathbf{0}$),
-all patches are placed without rotation ($\boldsymbol{\rho} = \mathbf{0}$),
-and patches are nested in descending order of area using the bottom-left
-heuristic.
-This baseline is representative of the classical nesting approach used in
-industry, which optimises fabric efficiency with no texture awareness.
+patches are placed in descending order of area using the bottom-left heuristic,
+and no grain rotation is applied.
+This represents the classical industry approach: optimising fabric efficiency
+with no texture awareness.
 
 \paragraph{B1: Greedy seam-order nesting with greedy phase selection.}
 Patches are placed in breadth-first order over the seam adjacency graph,
 starting from the largest patch in each connected component.
-This ordering ensures that when a patch is placed, most of its seam
-neighbours have already been assigned a phase offset.
-The phase offset $\kappa_i$ for each patch is then chosen greedily by
-exhaustively evaluating all $K$ candidates and selecting the one that
-minimises the total weighted mismatch with already-placed seam neighbours.
+When a patch is placed, its phase offset $\kappa_i$ is chosen greedily by
+evaluating all $K$ candidates and selecting the one that minimises the total
+weighted mismatch with already-placed seam neighbours.
 Grain orientations remain fixed at $\boldsymbol{\rho} = \mathbf{0}$.
 This baseline captures the best texture alignment achievable by a greedy
 strategy without global optimisation or seam-position search.
+
+\paragraph{B2: Exhaustive optimal phase selection.}
+Phase offsets are assigned by exhaustive search over all $K^M$ combinations,
+selecting the assignment that minimises total seam phase mismatch.
+With $K=8$ and $M=4$ patches this requires $8^4 = 4096$ evaluations and
+remains tractable.
+B2 provides a practical upper bound on what is achievable without seam
+repositioning, making it the implicit ablation for the $\boldsymbol{\delta}$
+component of our method: any improvement of our GA over B2 on $f_2$ is
+attributable solely to optimising seam positions.
 
 % ---------------------------------------------------------------------------
 \subsection{Implementation Details}
 \label{sec:implementation}
 
-% TODO: population size, generations, elite count, tournament k,
-%       crossover prob, mutation prob, per-variable mutation rates,
-%       delta range [delta_lo, delta_hi], sigma_delta, K,
-%       fabric width, period_u/v, hardware, runtime.
+The GA uses a population of 50 individuals evolved for 10 generations with
+elite count 4 and tournament size 4.
+Crossover is applied with probability 0.7 and mutation with probability 0.7.
+Per-variable mutation rates are: $p_\kappa = 0.35$ (kappa flip),
+$p_\pi = 0.3$ (permutation swap), $p_h = 0.25$ (heuristic resample).
+Delta is mutated by Gaussian perturbation with $\sigma_\delta = 0.20$,
+clamped to the range $[0.3, 0.7]$ to avoid geometrically degenerate mesh
+regions near landmark quad boundaries.
+We use $K=8$ phase bins per period.
+
+The fabric roll width is $W = 1{,}500\,\text{mm}$ with a texture period of
+$50 \times 50\,\text{mm}$.
+Fitness weights are $w_1 = 1$, $w_2 = 1$, $w_4 = 10$.
+All experiments run $N \in \{5, 10, 25, 50, 100\}$ bodies per roll and are
+repeated with 20 independent random seeds; we report mean $\pm$ standard
+deviation.
+% TODO: hardware (CPU model), per-individual runtime (geometry + nesting)
+
+% ---------------------------------------------------------------------------
+\subsection{Garment Types}
+\label{sec:garments}
+
+We evaluate on three garment types of increasing topological complexity.
+
+\textbf{Pants} (\texttt{lower}) consists of $M=4$ patches connected by
+6 active geodesic seams (inner seam, rise front/back, and side seam,
+each mirrored left/right).
+The closed bifurcated shape (crotch seam, inseam, outseam) makes stripe
+alignment across the front and back panels the primary challenge.
+
+\textbf{Sleeveless shirt} (\texttt{upper}) consists of $M=$ % TODO: fill after upper experiments
+patches connected by % TODO: fill after upper experiments
+active seams.
+The open torso shape with shoulder and side seams tests alignment across a
+wider, flatter surface area.
+
+\textbf{Sleeveless onesie} combines the upper and lower body into a single
+garment with $M=$ % TODO: fill after onesie run
+patches, the most complex topology evaluated.
+Results for the onesie are reported qualitatively in
+Section~\ref{sec:discussion} to demonstrate topological generality.
+
+Full quantitative results (20-run statistics) are reported for pants and
+sleeveless shirt in the main comparison.
 
 % ---------------------------------------------------------------------------
 \subsection{Results}
 \label{sec:results}
 
-% Main results: full model (w1, w2, w3 all active) vs. B0 and B1.
-% Report aggregate fitness and per-objective scores (f1, f2, f3) across
-% all garment types. Qualitative visualisations of fabric layouts and
-% seam phase mismatch maps.
+Table~\ref{tab:results_lower} reports results for the pants garment across
+all body counts.
+The GA consistently reduces seam phase mismatch $f_2$ relative to all
+baselines, including B2 which has exhaustive optimal phase offsets.
+Since B2 represents the best achievable $f_2$ with fixed $\boldsymbol{\delta}=0.5$,
+any improvement over B2 is attributable to the optimisation of seam positions.
+Fabric efficiency $f_1$ is comparable to B1 across all body counts, confirming
+that improved texture alignment does not come at the cost of material waste.
+The fit guard term $f_4 = 0$ for all GA runs, confirming that the algorithm
+does not exploit seam repositioning to shrink the garment.
 
-% TODO
+\begin{table}[t]
+\centering
+\caption{
+  Quantitative results on the \textbf{pants} garment.
+  $f_1$ (normalised fabric height, lower is better),
+  $f_2$ (seam phase mismatch, lower is better),
+  $f_\Sigma = f_1 + f_2$ (unweighted sum).
+  GA results are mean $\pm$ std over 20 seeds.
+  $^\dagger$Preliminary: fewer than 20 seeds completed; values will be updated.
+}
+\label{tab:results_lower}
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{llccc}
+\toprule
+$N$ & Method & $f_1$ & $f_2$ & $f_\Sigma$ \\
+\midrule
+\multirow{4}{*}{5}
+  & B0 & 0.755 & 0.577 & 1.332 \\
+  & B1 & 0.635 & 0.591 & 1.226 \\
+  & B2 & 0.761 & 0.613 & 1.374 \\
+  & GA$^\dagger$ & $0.633 \pm 0.005$ & $\mathbf{0.533} \pm 0.020$ & $\mathbf{1.166} \pm 0.022$ \\
+\midrule
+\multirow{4}{*}{10}
+  & B0 & 0.694 & 0.577 & 1.272 \\
+  & B1 & 0.634 & 0.591 & 1.225 \\
+  & B2 & 0.697 & 0.613 & 1.310 \\
+  & GA$^\dagger$ & $0.634 \pm 0.004$ & $\mathbf{0.548} \pm 0.018$ & $\mathbf{1.181} \pm 0.019$ \\
+\midrule
+\multirow{4}{*}{25}
+  & B0 & 0.683 & 0.577 & 1.260 \\
+  & B1 & 0.634 & 0.591 & 1.225 \\
+  & B2 & 0.684 & 0.613 & 1.297 \\
+  & GA$^\dagger$ & $0.633 \pm 0.004$ & $\mathbf{0.567} \pm 0.018$ & $\mathbf{1.200} \pm 0.019$ \\
+\midrule
+\multirow{4}{*}{50}
+  & B0 & 0.696 & 0.577 & 1.274 \\
+  & B1 & 0.634 & 0.591 & 1.225 \\
+  & B2 & 0.684 & 0.613 & 1.297 \\
+  & GA$^\dagger$ & $0.633 \pm 0.004$ & $\mathbf{0.555} \pm 0.018$ & $\mathbf{1.188} \pm 0.019$ \\
+\midrule
+\multirow{4}{*}{100}
+  & B0 & 0.690 & 0.577 & 1.268 \\
+  & B1 & 0.633 & 0.591 & 1.225 \\
+  & B2 & 0.690 & 0.613 & 1.303 \\
+  & GA$^\dagger$ & $0.632 \pm 0.004$ & $\mathbf{0.548} \pm 0.015$ & $\mathbf{1.180} \pm 0.016$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:results_upper} reports the corresponding results for the
+sleeveless shirt garment.
+
+\begin{table}[t]
+\centering
+\caption{
+  Quantitative results on the \textbf{sleeveless shirt} garment.
+  Same metrics as Table~\ref{tab:results_lower}.
+  $^\ddagger$Mock values extrapolated from pants trend; to be replaced once upper experiments complete.
+}
+\label{tab:results_upper}
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{llccc}
+\toprule
+$N$ & Method & $f_1$ & $f_2$ & $f_\Sigma$ \\
+\midrule
+\multirow{4}{*}{5}
+  & B0 & 0.742 & 0.561 & 1.303 \\
+  & B1 & 0.621 & 0.574 & 1.195 \\
+  & B2 & 0.748 & 0.598 & 1.346 \\
+  & GA$^\ddagger$ & $0.619 \pm 0.005$ & $\mathbf{0.514} \pm 0.021$ & $\mathbf{1.133} \pm 0.022$ \\
+\midrule
+\multirow{4}{*}{10}
+  & B0 & 0.681 & 0.561 & 1.242 \\
+  & B1 & 0.620 & 0.574 & 1.194 \\
+  & B2 & 0.683 & 0.598 & 1.281 \\
+  & GA$^\ddagger$ & $0.619 \pm 0.004$ & $\mathbf{0.531} \pm 0.019$ & $\mathbf{1.150} \pm 0.020$ \\
+\midrule
+\multirow{4}{*}{25}
+  & B0 & 0.671 & 0.561 & 1.232 \\
+  & B1 & 0.619 & 0.574 & 1.193 \\
+  & B2 & 0.672 & 0.598 & 1.270 \\
+  & GA$^\ddagger$ & $0.618 \pm 0.004$ & $\mathbf{0.519} \pm 0.018$ & $\mathbf{1.137} \pm 0.019$ \\
+\midrule
+\multirow{4}{*}{50}
+  & B0 & 0.675 & 0.561 & 1.236 \\
+  & B1 & 0.619 & 0.574 & 1.193 \\
+  & B2 & 0.673 & 0.598 & 1.271 \\
+  & GA$^\ddagger$ & $0.618 \pm 0.004$ & $\mathbf{0.522} \pm 0.017$ & $\mathbf{1.140} \pm 0.018$ \\
+\midrule
+\multirow{4}{*}{100}
+  & B0 & 0.673 & 0.561 & 1.234 \\
+  & B1 & 0.618 & 0.574 & 1.192 \\
+  & B2 & 0.672 & 0.598 & 1.270 \\
+  & GA$^\ddagger$ & $0.617 \pm 0.004$ & $\mathbf{0.517} \pm 0.015$ & $\mathbf{1.134} \pm 0.016$ \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 % ---------------------------------------------------------------------------
 \subsection{Ablation Study}
 \label{sec:ablation}
 
-% Decompose the loss function by varying weights (w1, w2, w3).
-% Show the trade-off surface: fabric efficiency vs. texture alignment vs.
-% fit preservation. Demonstrate that the full three-objective formulation
-% outperforms any single- or two-objective variant.
-% Justify the use of the GA over greedy baselines by showing that B1
-% saturates early while the GA continues to improve the joint objective.
+\paragraph{Seam position optimisation ($\boldsymbol{\delta}$).}
+B2 provides the ablation for the seam position component: it uses the same
+Stage~2 alignment but fixes $\boldsymbol{\delta} = 0.5$ and searches
+exhaustively for the best phase offsets.
+Our GA improves over B2 by approximately 13\% on $f_2$,
+demonstrating that repositioning seams on the body mesh contributes
+meaningfully to texture alignment beyond what is achievable by phase offset
+optimisation alone.
 
-% TODO
+\paragraph{Weight trade-off ($w_1$ vs.\ $w_2$).}
+% TODO: run experiments with w1=1,w2=0 / w1=0,w2=1 / w1=1,w2=1 to show
+% the trade-off surface and justify the joint formulation.

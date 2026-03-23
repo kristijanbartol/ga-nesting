@@ -226,8 +226,8 @@ def parse_args():
                    help="Fitness weight for fabric height f1 (default: 1.0)")
     p.add_argument("--w2", type=float, default=10.0,
                    help="Fitness weight for seam phase mismatch f2 (default: 10.0)")
-    p.add_argument("--w4", type=float, default=0.0,
-                   help="Fitness weight for 3D patch area deviation f4 (default: 0.0)")
+    p.add_argument("--w4", type=float, default=10.0,
+                   help="Fitness weight for garment area reduction f4 (default: 10.0)")
     return p.parse_args()
 
 

@@ -119,7 +119,7 @@ class RealEvaluatorConfig:
     w1: float = 1.0  # fabric height
     w2: float = 1.0  # seam phase mismatch
     w3: float = 0.0  # flattening distortion (stub)
-    w4: float = 0.0  # patch area deviation from baseline (fit preservation)
+    w4: float = 0.0  # garment area reduction penalty (fit preservation; one-sided)
 
 
 class RealEvaluator:
@@ -466,15 +466,16 @@ class RealEvaluator:
 
         f3 = 0.0
 
-        # --- f4: 3D patch area deviation from baseline (fit preservation) ---
-        # Σ |area_i(δ) - area_i_baseline| / Σ area_i_baseline
-        # Dimensionless ratio in [0, ∞); 0 means no change from the intended fit.
+        # --- f4: total garment area reduction penalty (fit preservation) ---
+        # One-sided: only fires when total 3D area SHRINKS below baseline.
+        # f4 = max(0, (baseline_total - current_total) / baseline_total)
+        # This prevents the GA from shortening the garment to ease nesting
+        # without penalising legitimate seam repositioning that redistributes
+        # area between patches while keeping total coverage the same.
         current_areas = _load_patch_areas_3d(self._patches_3d_dir)
         if current_areas and self.baseline_areas_3d:
-            f4 = sum(
-                abs(current_areas.get(k, 0.0) - self.baseline_areas_3d[k])
-                for k in self.baseline_areas_3d
-            ) / self._baseline_total_area
+            current_total = sum(current_areas.get(k, 0.0) for k in self.baseline_areas_3d)
+            f4 = max(0.0, (self._baseline_total_area - current_total) / self._baseline_total_area)
         else:
             f4 = 0.0
 
@@ -482,7 +483,7 @@ class RealEvaluator:
         # matching f2 which is already averaged across bodies.
         # f1_norm = average per-body height / fabric_width  ≈ 0.5–3.0
         # f2      = average per-body phase mismatch         ≈ 0.0–0.5 per seam
-        # f4      ≈ 0.0–0.1 typical (area deviation fraction)
+        # f4      = 0.0 if no shrinkage; > 0 only when GA shortens garment
         f1_norm = f1 / (self.cfg.fabric_width_mm * N)
         ind.meta["f1_height_mm"] = f1
         ind.meta["f1_norm"] = f1_norm
