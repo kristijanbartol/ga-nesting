@@ -64,28 +64,13 @@ Second, patterns with glide-reflection symmetry (e.g.\ herringbone, chevron)
 allow patches to align via a reflected copy of the texture, which must be
 accounted for in the mismatch computation.
 
-We support eight groups, summarised in Table~\ref{tab:wallpaper}.
-
-\begin{table}[t]
-\centering
-\caption{Supported wallpaper groups with seam compatibility rules.}
-\label{tab:wallpaper}
-\begin{tabular}{llll}
-\toprule
-Group & Name & Pattern & Seam compatibility \\
-\midrule
-PM  & stripes          & horizontal stripes    & $\rho_i \equiv \rho_j \pmod{2}$ \\
-PM  & diagonal stripes & stripes at 45°        & $\rho_i \equiv \rho_j \pmod{2}$ \\
-PMM & grid             & check / plaid         & all pairs \\
-P4  & pinwheel         & 4-fold rotation       & all pairs \\
-P4M & pinwheel mirrors & 4-fold + mirrors      & all pairs \\
-PG  & herringbone      & glide reflection only & $\rho_i \equiv \rho_j \pmod{2}$ \\
-PMG & chevron          & mirror + glide        & $\rho_i \equiv \rho_j \pmod{2}$ \\
-PGG & brick bond       & two glide axes        & $\rho_i \equiv \rho_j \pmod{2}$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
+We support eight groups:
+PM (stripes), PMM (grid/plaid), P4 (pinwheel), P4M (pinwheel with mirrors),
+and three with glide-reflection symmetry---PG (herringbone), PMG (chevron),
+PGG (brick bond).
+Groups with rotational symmetry (PMM, P4, P4M) allow all grain-rotation
+pairs $(\rho_i, \rho_j)$; the remaining groups require
+$\rho_i \equiv \rho_j \pmod{2}$.
 If $\mathcal{G}$ declares $(\rho_i, \rho_j)$ incompatible, the pair receives
 a hard penalty in $f_\text{align}$.
 For groups with glide-reflection symmetry (PG, PMG, PGG), each group defines
@@ -231,23 +216,13 @@ The 2D lattice phase of a fabric point $\mathbf{x}$ is
 where $[B] = [\mathbf{u} \mid \mathbf{v}]$ and $\mathrm{frac}(\cdot)$ is
 applied component-wise.
 For chart $p_i$, the kappa offset shifts the phase uniformly:
-\[
-\mathrm{Phase}_i(\mathbf{x}) =
-\mathrm{frac}\!\left(\mathrm{Phase}(\mathbf{x}) + \frac{\kappa_i}{K}\mathbf{1}\right),
-\quad \mathbf{1} = (1,1)^T.
-\]
+$\mathrm{Phase}_i(\mathbf{x}) =
+\mathrm{frac}(\mathrm{Phase}(\mathbf{x}) + \frac{\kappa_i}{K}\mathbf{1})$.
 For stripe groups, the pattern is translation-invariant along the stripe axis,
 so that phase component contributes zero to any difference.
-The per-point mismatch between two phases is
-\[
-\Delta(\boldsymbol{\phi}_a, \boldsymbol{\phi}_b)
-= \tfrac{1}{2}\bigl(
-    \delta^u(\boldsymbol{\phi}_a, \boldsymbol{\phi}_b)
-  + \delta^v(\boldsymbol{\phi}_a, \boldsymbol{\phi}_b)
-\bigr),
-\quad
-\delta^d = \min\!\left(|\phi_a^d - \phi_b^d|,\; 1 - |\phi_a^d - \phi_b^d|\right).
-\]
+The per-point mismatch is the average wrapped distance over both axes,
+$\Delta(\boldsymbol{\phi}_a, \boldsymbol{\phi}_b)
+= \tfrac{1}{2}\sum_{d} \min(|\phi_a^d - \phi_b^d|,\; 1 - |\phi_a^d - \phi_b^d|)$.
 The seam mismatch integrates this over each seam arc-length:
 \[
 \mathrm{Mismatch}(s)

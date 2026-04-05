@@ -10,20 +10,6 @@ midpoints of their respective landmark quads ($\boldsymbol{\delta} = 0.5$).
 All baselines include Stage~2 global phase alignment (Section~\ref{sec:stage2})
 for a fair comparison.
 
-\paragraph{B0: Pure greedy nesting.}
-All phase offsets are set to zero ($\boldsymbol{\kappa} = \mathbf{0}$),
-patches are placed in descending order of area using the bottom-left heuristic,
-and no grain rotation is applied.
-This represents the classical industry approach: optimising fabric efficiency
-with no texture awareness.
-
-\paragraph{B1: Greedy phase selection.}
-Patches are placed in breadth-first order over the seam adjacency graph.
-Each patch's phase offset $\kappa_i$ is chosen greedily from $K$ candidates
-to minimise mismatch with already-placed neighbours.
-This captures the best texture alignment achievable by a greedy strategy
-without global optimisation or seam-position search.
-
 \paragraph{B2: Optimal phase selection.}
 Phase offsets are assigned to minimise total seam phase mismatch without
 seam repositioning.
@@ -35,6 +21,20 @@ uniformly random $\boldsymbol{\kappa}$ assignments and keeps the best.
 B2 serves as the ablation for the $\boldsymbol{\delta}$ component: any
 improvement of the GA over B2 on $f_\text{align}$ is attributable to seam
 position optimisation.
+
+\paragraph{B1: Greedy phase selection.}
+Patches are placed in breadth-first order over the seam adjacency graph.
+Each patch's phase offset $\kappa_i$ is chosen greedily from $K$ candidates
+to minimise mismatch with already-placed neighbours.
+This captures the best texture alignment achievable by a greedy strategy
+without global optimisation or seam-position search.
+
+\paragraph{B0: Pure greedy nesting.}
+All phase offsets are set to zero ($\boldsymbol{\kappa} = \mathbf{0}$),
+patches are placed in descending order of area using the bottom-left heuristic,
+and no grain rotation is applied.
+This represents the classical industry approach: optimising fabric efficiency
+with no texture awareness.
 
 % ---------------------------------------------------------------------------
 \subsection{Implementation Details}
@@ -56,7 +56,13 @@ Fitness weights are $w_\text{fabric} = 1$, $w_\text{align} = 2.5$, $w_\text{fit}
 All experiments run $N \in \{5, 10, 25, 50, 100\}$ bodies per roll and are
 repeated with 20 independent random seeds; we report mean $\pm$ standard
 deviation.
-% TODO: hardware (CPU model), per-individual runtime (geometry + nesting)
+Each fitness evaluation takes approximately 5\,s on a single CPU core
+(geometry: ${\sim}$4.5\,s, Stage~2: ${\sim}$0.1\,s, nesting: $<$0.01\,s),
+so a full GA run (100 $\times$ 20 = 2{,}000 evaluations) completes in
+approximately 3 hours.
+For comparison, B2 on the onesie evaluates $5 \times 10^5$ phase
+assignments in similar time but searches only
+$\boldsymbol{\kappa}$, not $\boldsymbol{\delta}$.
 
 % ---------------------------------------------------------------------------
 \subsection{Garment Types}
@@ -116,33 +122,33 @@ isolating the contribution of seam position optimisation.
 $N$ & Method & $f_\text{fabric}$ & $f_\text{align}$ \\
 \midrule
 \multirow{4}{*}{5}
-  & B0 & -- & -- \\
-  & B1 & -- & -- \\
   & B2 & -- & -- \\
+  & B1 & -- & -- \\
+  & B0 & -- & -- \\
   & GA$^\dagger$ & -- & -- \\
 \midrule
 \multirow{4}{*}{10}
-  & B0 & -- & -- \\
-  & B1 & -- & -- \\
   & B2 & -- & -- \\
+  & B1 & -- & -- \\
+  & B0 & -- & -- \\
   & GA$^\dagger$ & -- & -- \\
 \midrule
 \multirow{4}{*}{25}
-  & B0 & -- & -- \\
-  & B1 & -- & -- \\
   & B2 & -- & -- \\
+  & B1 & -- & -- \\
+  & B0 & -- & -- \\
   & GA$^\dagger$ & -- & -- \\
 \midrule
 \multirow{4}{*}{50}
-  & B0 & -- & -- \\
-  & B1 & -- & -- \\
   & B2 & -- & -- \\
+  & B1 & -- & -- \\
+  & B0 & -- & -- \\
   & GA$^\dagger$ & -- & -- \\
 \midrule
 \multirow{4}{*}{100}
-  & B0 & -- & -- \\
-  & B1 & -- & -- \\
   & B2 & -- & -- \\
+  & B1 & -- & -- \\
+  & B0 & -- & -- \\
   & GA$^\dagger$ & -- & -- \\
 \bottomrule
 \end{tabular}
@@ -164,19 +170,41 @@ $N$ & Method & $f_\text{fabric}$ & $f_\text{align}$ \\
 $N$ & Method & $f_\text{fabric}$ & $f_\text{align}$ \\
 \midrule
 \multirow{4}{*}{5}
-  & B0 & 0.755 & 0.577 \\
-  & B1 & 0.635 & 0.591 \\
   & B2 & 0.761 & 0.613 \\
+  & B1 & 0.635 & 0.591 \\
+  & B0 & 0.755 & 0.577 \\
   & GA$^\dagger$ & $0.633 \pm 0.005$ & $\mathbf{0.533} \pm 0.020$ \\
 \midrule
 \multirow{4}{*}{100}
-  & B0 & 0.690 & 0.577 \\
-  & B1 & 0.633 & 0.591 \\
   & B2 & 0.690 & 0.613 \\
+  & B1 & 0.633 & 0.591 \\
+  & B0 & 0.690 & 0.577 \\
   & GA$^\dagger$ & $0.632 \pm 0.004$ & $\mathbf{0.548} \pm 0.015$ \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\paragraph{Qualitative comparison.}
+Figure~\ref{fig:comparison} shows a side-by-side comparison of the nesting
+layout produced by B0 (no texture awareness) and the GA on the pants garment
+with a horizontal stripe pattern.
+The GA optimises phase offsets $\boldsymbol{\kappa}$ to shift the stripe
+bands within each patch so that they align across seam boundaries, reducing
+the visible discontinuity at each seam.
+% TODO: replace with onesie comparison from final runs for a more compelling example
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{comparison}
+\caption{
+  Nesting layout for the pants garment ($M=4$, $N=1$, stripes).
+  Left: B0 baseline ($\boldsymbol{\kappa}=\mathbf{0}$, no texture alignment).
+  Right: GA result with optimised phase offsets.
+  Stripe lines within patches show how the GA shifts texture phases to
+  improve alignment across seam boundaries.
+}
+\label{fig:comparison}
+\end{figure}
 
 \paragraph{Convergence.}
 Figure~\ref{fig:convergence} shows the best-so-far weighted fitness
