@@ -198,8 +198,8 @@ designer-specified weights.
 f_\text{fabric}(\mathbf{x}) = \frac{1}{NW} \max_{p \in \text{Layout}} y_{\max}(p),
 \]
 where $N$ is the number of garment bodies in the layout.
-Normalising by $NW$ makes $f_\text{fabric}$ dimensionless, scale-invariant, and
-comparable across different body counts and fabric widths.
+Normalising by $NW$ makes the metric comparable across body counts and
+fabric widths.
 
 \paragraph{Texture alignment ($f_\text{align}$).}
 The 2D lattice phase of a fabric point $\mathbf{x}$ is
@@ -244,20 +244,17 @@ f_\text{fit}(\mathbf{x})
 \]
 where $A(\boldsymbol{\delta}) = \sum_i \mathrm{Area}_{\mathrm{3D}}(p_i(\boldsymbol{\delta}))$
 is the total surface area of all patches.
-$f_\text{fit} = 0$ whenever the garment is at least as large as the baseline;
-it fires only when the EA attempts to improve other objectives by
-reducing the sewn garment area.
+$f_\text{fit} = 0$ whenever the garment is at least as large as the baseline,
+and positive otherwise.
 
 % ---------------------------------------------------------------------------
 \subsection{Evolutionary Algorithm}
 \label{sec:ea}
 
-The mixed structure of the genotype---continuous seam parameters
-$\boldsymbol{\delta}$, discrete phase offsets $\boldsymbol{\kappa}$ and
-grain orientations $\boldsymbol{\rho}$---motivates a genetic algorithm with
-variable-specific operators following the MIES
-principle~\cite{LiEEBSDR13}: each variable type is handled by the operator
-best suited to its domain.
+The genotype mixes continuous ($\boldsymbol{\delta}$), discrete
+($\boldsymbol{\kappa}$, $\boldsymbol{\rho}$), and combinatorial variables,
+requiring variable-specific operators in the MIES
+tradition~\cite{LiEEBSDR13}.
 
 \paragraph{Selection.}
 Tournament selection with size $k$ compares candidates first by Pareto
