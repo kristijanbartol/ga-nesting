@@ -6,26 +6,33 @@
 \label{sec:rw_nesting}
 
 The problem of placing irregularly shaped panels on a strip to minimise
-wasted material is known as the irregular strip packing or nesting problem.
+wasted material is known as the irregular strip packing or nesting
+problem~\cite{WascherHS07}.
 Bennell and Oliveira~\cite{BennellO08} provide a comprehensive tutorial
 covering the principal geometric tools, from raster methods to the
-no-fit polygon (NFP).
+no-fit polygon (NFP), and Le{\~a}o et al.~\cite{LeaoTOCA20} give a recent
+review of mathematical models for irregular packing.
 The NFP, which characterises all valid non-overlapping placements of one
 polygon relative to another, underpins many state-of-the-art nesting
 solvers~\cite{BurkeHKW07}.
-Burke et al.~\cite{BurkeHKW06} introduce the bottom-left-fill heuristic,
-which places each piece at the lowest, leftmost feasible position on the
-strip; this heuristic forms the basis of our nesting engine.
+Burke et al.~\cite{BurkeHKW06} introduce the bottom-left-fill (BLF)
+heuristic, which places each piece at the lowest, leftmost feasible position
+on the strip; Mart{\'i}nez-Sykora et al.~\cite{MartinezSykoraACRO22}
+recently proposed a fast, scalable BLF variant based on a semi-discrete
+representation.
+Our nesting engine builds on the classical BLF paradigm.
 
 Metaheuristic approaches have been widely applied to nesting.
 Jakobs~\cite{Jakobs96} introduces one of the first genetic algorithm
 formulations for polygon packing, encoding placement order as a permutation.
+Mundim et al.~\cite{MundimAQO17} apply a biased random-key genetic
+algorithm to open-dimension nesting with a no-fit raster representation.
 Heckmann and Lengauer~\cite{HeckmannL95} address the textile industry
-specifically with simulated annealing, demonstrating the practical relevance
-of metaheuristics for garment nesting under industrial constraints.
+specifically with simulated annealing, and
 Gomes and Oliveira~\cite{GomesO06} combine simulated annealing with linear
-programming to improve local compaction, achieving significant gains on
-standard benchmarks.
+programming for local compaction.
+Elkeran~\cite{Elkeran13} achieves strong results with guided cuckoo search
+and pairwise clustering.
 
 All of the above methods treat texture as irrelevant: panels are placed
 purely for geometric compactness with no regard for pattern continuity
@@ -54,16 +61,26 @@ optimise the placement of sewing pattern pieces to minimise phase mismatch
 along seams, with optional deformation of the seam shapes themselves.
 A follow-up~\cite{WolffHS19} extends this framework to enforce body
 reflection symmetry constraints on both texture alignment and seam shape.
-
 While this line of work establishes the formal foundations for wallpaper
 group alignment, it assumes an unbounded fabric supply and ignores material
 efficiency entirely.
 Furthermore, by operating directly on 2D patch geometry, any deformation
 introduced to improve alignment implicitly modifies the garment fit, with
 no mechanism to measure or bound this change.
-Our method addresses both limitations: fabric roll constraints and material
-efficiency are explicit objectives, and fit deviation is quantified and
-minimised as a separate objective rather than treated as a side effect.
+
+Pietroni et al.~\cite{PietroniDFLVS22} address a complementary problem:
+given a 3D garment shape, they segment it into panels and compute 2D
+parameterizations that respect tailoring constraints such as seam symmetry,
+dart placement, and fabric grain alignment, with a flattening distortion
+measure that models woven-fabric deformation.
+Their objective is to optimise seam placement for minimal flattening
+distortion, whereas our method optimises seam placement for texture
+alignment under fabric roll constraints.
+
+Our method addresses the limitations of both lines of work: fabric roll
+constraints and material efficiency are explicit objectives, fit deviation
+is quantified and minimised as a separate objective, and seam modifications
+are grounded in 3D body geometry rather than applied to 2D patches.
 
 % ---------------------------------------------------------------------------
 \subsection{Multi-Objective Evolutionary Algorithms and Mixed-Type Genotypes}
@@ -73,9 +90,11 @@ The seminal NSGA-II algorithm~\cite{Deb2002NSGAII} establishes the standard
 framework for Pareto-based multi-objective optimisation with tournament
 selection: candidate solutions are compared by dominance, with a
 crowding-distance tiebreaker to maintain diversity.
-We adopt a simplified variant of this selection scheme, using fitness sum
-as the tiebreaker in place of crowding distance, which is sufficient for
-our three-objective problem.
+Deb and Jain~\cite{DebJ14} extend this to many-objective problems in
+NSGA-III with reference-point-based selection.
+We adopt a simplified variant of the NSGA-II selection scheme, using
+fitness sum as the tiebreaker in place of crowding distance, which is
+sufficient for our three-objective problem.
 
 The mixed structure of our genotype (continuous seam parameters, discrete
 orientations and phase offsets, and a combinatorial nesting order) requires

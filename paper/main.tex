@@ -33,31 +33,31 @@
 
 \begin{abstract}
 Placing 2D garment panels on a fabric roll efficiently is a well-studied
-combinatorial optimisation problem, yet existing methods treat the fabric
-texture as irrelevant and ignore whether periodic patterns such as stripes
-or checks align across the seams of the assembled garment.
+combinatorial optimisation problem, yet existing methods ignore whether
+periodic patterns such as stripes or checks align across the seams of the
+assembled garment.
 Prior work on texture alignment assumes an unbounded fabric supply and
 operates by directly deforming 2D patch shapes, leaving fit changes implicit
 and unmeasured.
 We propose a joint optimisation framework that simultaneously minimises
 fabric consumption, seam-wise texture misalignment, and garment fit
 deviation.
-Seam positions are optimised directly on the 3D body mesh, so that fit
-changes are grounded in 3D geometry and can be explicitly measured and
-minimised.
-We model the periodic structure of the fabric via wallpaper symmetry groups,
-supporting a range of patterns including those with glide-reflection symmetry
-such as herringbone, chevron, and brick bond.
-The problem is solved with a genetic algorithm that accommodates the mixed
-nature of the genotype: continuous seam parameters, discrete orientation and
-phase offsets, and a combinatorial nesting order, each with dedicated
-crossover and mutation operators.
-We introduce three baselines and evaluate the method on three garment types
-with layouts of up to 400 pattern pieces.
-Qualitative and quantitative comparisons against the baselines demonstrate
-the benefit of the genetic algorithm and show scalability and robustness
-across garment categories.
-\keywords{garment pattern nesting \and texture alignment \and evolutionary algorithm \and wallpaper groups \and seam optimisation}
+Seam positions are optimised directly on the 3D body mesh, grounding fit
+changes in body geometry so they can be explicitly measured and bounded.
+The periodic structure of the fabric is modelled via wallpaper symmetry
+groups, including patterns with glide-reflection symmetry such as
+herringbone and chevron.
+The problem is solved with a genetic algorithm using variable-specific
+operators for its mixed genotype of continuous seam parameters, discrete
+phase offsets, and grain orientations.
+For complex garments, the combinatorial phase space ($K^M > 10^9$) makes
+exhaustive search intractable, and the GA is the only method that can
+jointly explore seam positions and phase assignments.
+Experiments on two garment types with layouts of up to 1{,}100 pattern
+pieces and 20 independent seeds show that the GA consistently improves
+texture alignment over all baselines without sacrificing fabric efficiency.
+\keywords{garment pattern nesting \and texture alignment \and
+evolutionary algorithm \and wallpaper groups \and seam optimisation}
 \end{abstract}
 
 \input{sections/introduction}

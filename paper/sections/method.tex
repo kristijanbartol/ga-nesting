@@ -1,12 +1,34 @@
 \section{Method}
 \label{sec:method}
 
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\linewidth]{pipeline-wip}
+\caption{
+  Overview of the proposed pipeline.
+  The genome encodes seam keypoint positions $\boldsymbol{\delta}$, texture
+  phase offsets $\boldsymbol{\kappa}$, and grain orientations
+  $\boldsymbol{\rho}$.
+  \emph{Geometry}: $\boldsymbol{\delta}$ is mapped via bilinear interpolation
+  to mesh vertices; geodesics define the seam network and LSCM
+  parameterization flattens the resulting patches.
+  \emph{Stage~2}: Levenberg--Marquardt minimises seam phase residuals via
+  small translational corrections per patch.
+  \emph{Nesting}: patches are placed on the fabric roll by a bottom-left
+  heuristic with positions snapped to the texture lattice.
+  The GA scores each individual on fabric efficiency $f_\text{fabric}$,
+  seam phase mismatch $f_\text{align}$, and fit preservation $f_\text{fit}$,
+  and evolves the population with variable-specific operators.
+}
+\label{fig:pipeline}
+\end{figure*}
+
 We formulate garment pattern layout as a mixed-type optimisation problem
 and solve it with a multi-objective genetic algorithm.
 The pipeline maps a genotype encoding seam positions, patch orientations,
 texture phase offsets, and nesting parameters to a fabric layout,
-which is then scored by two objectives: fabric efficiency
-and texture alignment across seams.
+which is then scored by two primary objectives, fabric efficiency
+and texture alignment across seams, together with a fit-preservation guard.
 
 % ---------------------------------------------------------------------------
 \subsection{Problem Formulation}
@@ -16,7 +38,8 @@ We define the problem as
 \[
 \Psi = \langle M, \mathcal{T}, \mathcal{L}, \mathbf{w}, \Omega \rangle,
 \]
-where $M = (V, E, F)$ is the 3D garment mesh,
+where $M = (V, E, F)$ is the 3D garment mesh
+(we use SMPL~\cite{LoperMRPB15}),
 $\mathcal{T}$ is a periodic fabric texture characterised by a lattice basis
 $B = \{\mathbf{u}, \mathbf{v}\}$,
 $\mathcal{L} = \{L_1, \dots, L_m\}$ is a set of admissible quad regions on
@@ -64,7 +87,7 @@ PGG & brick bond       & two glide axes        & $\rho_i \equiv \rho_j \pmod{2}$
 \end{table}
 
 If $\mathcal{G}$ declares $(\rho_i, \rho_j)$ incompatible, the pair receives
-a hard penalty in $f_2$.
+a hard penalty in $f_\text{align}$.
 For groups with glide-reflection symmetry (PG, PMG, PGG), each group defines
 glide maps $\mathcal{G}_s = \{g_1, \dots\}$ acting on fractional phase
 coordinates, and the per-point mismatch takes the minimum over the identity
@@ -141,6 +164,10 @@ across seams without moving the patches on the fabric.
 The permutation $\pi \in S_n$ defines the order in which charts are placed
 on the fabric, and $h \in \mathcal{H}$ ($|\mathcal{H}|=3$) selects the
 bottom-left placement heuristic variant.
+In our experiments, $\pi$ and $h$ are fixed (area-sorted order and a single
+heuristic, respectively) to concentrate the search budget on the more
+impactful variables $\boldsymbol{\delta}$ and $\boldsymbol{\kappa}$, though
+they remain evolvable in principle.
 
 % ---------------------------------------------------------------------------
 \subsection{Phenotype: From Genotype to Layout}
@@ -149,64 +176,54 @@ bottom-left placement heuristic variant.
 \subsubsection{Seam Cutting and Parameterization.}
 Given $\boldsymbol{\delta}$, the keypoints $\{k_j\}$ are computed via
 bilinear interpolation and snapped to mesh vertices.
-Geodesic paths between corresponding keypoints define the seam network,
-along which the mesh is cut to yield 3D patches.
-Each patch is then flattened to 2D by LSCM parameterization, with a
-fixed seam-straightness regularization.
+Geodesic paths~\cite{SharpC20} between corresponding keypoints define the
+seam network, along which the mesh is cut to yield 3D patches.
+Each patch is then flattened to 2D by LSCM
+parameterization~\cite{LevyPRM02}, with a fixed seam-straightness
+regularization.
 
 \subsubsection{Stage 2: Global Phase Alignment.}
 \label{sec:stage2}
 After parameterization, patches connected by seams with $w_s > 0$ form
 connected components.
 Within each component a small translational correction $\mathbf{c}_i \in \mathbb{R}^2$
-is found per patch (root fixed at $\mathbf{c}_i = \mathbf{0}$) by minimising
-the total seam phase residual:
-\[
-C = \sum_{\substack{s \in \mathcal{S} \\ w_s > 0}}
-    w_s \sum_{(a,b) \in s} \left\|\mathbf{r}_{ab}\right\|^2,
-\]
-where the signed wrapped residual per axis is
-\[
-r^d_{ab}
-= \mathrm{wrap}\!\left(
-    \mathrm{Phase}_i(\mathbf{x}_a + \mathbf{c}_i)^d
-  - \mathrm{Phase}_j(\mathbf{x}_b + \mathbf{c}_j)^d
-\right), \quad d \in \{u,v\},
-\]
-and $\mathrm{wrap}(\cdot)$ maps to $[-\tfrac{1}{2},\tfrac{1}{2})$.
-This is solved with Levenberg--Marquardt using finite-difference Jacobians.
+per patch (root fixed at $\mathbf{0}$) is found by minimising the total
+weighted seam phase residual via Levenberg--Marquardt, using wrapped
+phase differences on $[-\tfrac{1}{2},\tfrac{1}{2})$ as residuals.
 The corrections are baked into the patch vertices before nesting.
+Stage~2 is applied identically in all baselines and in the GA, so any
+improvement of the GA over baselines is not attributable to this stage.
 
 \subsubsection{Nesting.}
 Each chart is rotated by $R(\theta_i)$ and placed on the fabric roll using
-heuristic $h$ in order $\pi$.
+heuristic $h$ in order $\pi$, subject to pairwise non-overlap and
+containment in $\Omega$.
 Placements are snapped to the texture lattice so that the absolute position
 on the roll does not introduce an uncontrolled phase offset.
-Charts must satisfy non-overlap and containment constraints:
-\begin{align}
-(\phi_i(p_i) + \mathbf{t}_i) \cap (\phi_j(p_j) + \mathbf{t}_j) &= \emptyset, \\
-(\phi_i(p_i) + \mathbf{t}_i) &\subset \Omega.
-\end{align}
 
 % ---------------------------------------------------------------------------
 \subsection{Objective Functions}
 \label{sec:objectives}
 
-The fitness vector is
+All objectives are minimised.
+The weighted fitness sum used for selection tie-breaking and elitism is
 \[
-\mathbf{F}(\mathbf{x}) = [w_1 f_1,\; w_2 f_2]^T,
+F_\Sigma(\mathbf{x}) = w_\text{fabric}\, f_\text{fabric}
+                     + w_\text{align}\, f_\text{align}
+                     + w_\text{fit}\, f_\text{fit},
 \]
-where $w_1, w_2 \geq 0$ are designer-specified weights and both
-components are minimised.
+where $w_\text{fabric}, w_\text{align}, w_\text{fit} \geq 0$ are
+designer-specified weights.
 
-\paragraph{Fabric efficiency ($f_1$).}
+\paragraph{Fabric efficiency ($f_\text{fabric}$).}
 \[
-f_1(\mathbf{x}) = \frac{1}{W} \max_{p \in \text{Layout}} y_{\max}(p).
+f_\text{fabric}(\mathbf{x}) = \frac{1}{NW} \max_{p \in \text{Layout}} y_{\max}(p),
 \]
-Normalising by $W$ makes $f_1$ dimensionless and comparable to $f_2$
-regardless of the physical scale of the fabric.
+where $N$ is the number of garment bodies in the layout.
+Normalising by $NW$ makes $f_\text{fabric}$ dimensionless, scale-invariant, and
+comparable across different body counts and fabric widths.
 
-\paragraph{Texture alignment ($f_2$).}
+\paragraph{Texture alignment ($f_\text{align}$).}
 The 2D lattice phase of a fabric point $\mathbf{x}$ is
 \[
 \mathrm{Phase}(\mathbf{x}) = \mathrm{frac}([B]^{-1}\mathbf{x}) \in [0,1)^2,
@@ -240,59 +257,89 @@ The seam mismatch integrates this over each seam arc-length:
     \mathrm{Phase}_j(\mathbf{x}_j(l))
   \bigr)\, dl,
 \]
-and $f_2$ accumulates this over all seams weighted by importance:
+and $f_\text{align}$ accumulates this over all seams weighted by importance:
 \[
-f_2(\mathbf{x}) = \sum_{s \in \mathcal{S}} w_s \cdot \mathrm{Mismatch}(s).
+f_\text{align}(\mathbf{x}) = \sum_{s \in \mathcal{S}} w_s \cdot \mathrm{Mismatch}(s).
 \]
+
+\paragraph{Fit preservation guard ($f_\text{fit}$).}
+Moving a seam keypoint away from the quad midpoint changes the 3D surface
+area of the resulting patches.
+To prevent the EA from improving texture alignment by shrinking the garment,
+we penalise any \emph{reduction} in total 3D patch area relative to the
+baseline configuration $\boldsymbol{\delta}_0 = 0.5$:
+\[
+f_\text{fit}(\mathbf{x})
+= \max\!\left(0,\;
+  \frac{A(\boldsymbol{\delta}_0) - A(\boldsymbol{\delta})}{A(\boldsymbol{\delta}_0)}
+  \right),
+\]
+where $A(\boldsymbol{\delta}) = \sum_i \mathrm{Area}_{\mathrm{3D}}(p_i(\boldsymbol{\delta}))$
+is the total surface area of all patches.
+$f_\text{fit} = 0$ whenever the garment is at least as large as the baseline;
+it fires only when the EA attempts to improve other objectives by
+reducing the sewn garment area.
 
 % ---------------------------------------------------------------------------
 \subsection{Evolutionary Algorithm}
 \label{sec:ea}
 
-The mixed structure of the genotype (continuous $\boldsymbol{\delta}$,
-discrete $\boldsymbol{\rho}, \boldsymbol{\kappa}, h$,
-and combinatorial $\pi$) motivates a genetic algorithm with
-variable-specific operators rather than a standard real-valued EA.
+The mixed structure of the genotype---continuous seam parameters
+$\boldsymbol{\delta}$, discrete phase offsets $\boldsymbol{\kappa}$ and
+grain orientations $\boldsymbol{\rho}$---motivates a genetic algorithm with
+variable-specific operators following the MIES
+principle~\cite{LiEEBSDR13}: each variable type is handled by the operator
+best suited to its domain.
 
 \paragraph{Selection.}
-Tournament selection with tournament size $k=3$ is used.
-The primary criterion is Pareto dominance: a candidate $\mathbf{x}$ dominates
-$\mathbf{y}$ if $\mathbf{F}(\mathbf{x}) \leq \mathbf{F}(\mathbf{y})$
-component-wise with at least one strict inequality.
+Tournament selection with size $k$ compares candidates first by Pareto
+dominance: $\mathbf{x}$ dominates $\mathbf{y}$ iff
+$\mathbf{F}(\mathbf{x}) \leq \mathbf{F}(\mathbf{y})$ component-wise with
+at least one strict inequality.
 When neither candidate dominates the other, the fallback criterion is the
-scalar sum $\sum_i w_i f_i$, which provides a consistent total order
-without discarding multi-objective information.
+weighted fitness sum $\sum_i w_i f_i$, providing a total order without
+discarding multi-objective information.
 
-\paragraph{Crossover.}
-Applied with probability $p_c$.
+\paragraph{Crossover (probability $p_c$).}
 Each variable type uses a dedicated operator:
-\begin{itemize}
-    \item $\boldsymbol{\delta}, \boldsymbol{\rho}, \boldsymbol{\kappa}$:
-          uniform gene-wise swap — each gene is exchanged between parents
-          independently with probability $\tfrac{1}{2}$.
-    \item $\pi$: whole-permutation inheritance — one parent's permutation is
-          copied in full (chosen by coin flip) to preserve permutation validity.
-    \item $h$: coin flip between the two parent values.
-\end{itemize}
+$\boldsymbol{\delta}$, $\boldsymbol{\rho}$, and $\boldsymbol{\kappa}$ use
+uniform gene-wise swap (each gene exchanged with probability
+$\tfrac{1}{2}$).
 
-\paragraph{Mutation.}
-Applied with probability $p_m$ after crossover.
-Each variable type uses a dedicated operator:
+\paragraph{Mutation (probability $p_m$).}
+Applied after crossover with operators matched to each variable type:
 \begin{itemize}
     \item $\boldsymbol{\delta}$: Gaussian perturbation
           $\delta_j \leftarrow \mathrm{clip}(\delta_j + \mathcal{N}(0, \sigma_\delta),\,
-          \delta_{\min}, \delta_{\max})$,
-          where $[\delta_{\min}, \delta_{\max}] \subset [0,1]$ avoids
-          geometrically degenerate mesh regions.
+          \delta_{\min}, \delta_{\max})$.
+          The bounds $[\delta_{\min}, \delta_{\max}] \subset [0,1]$ keep
+          keypoints away from degenerate mesh regions while the KDTree snap
+          discretises each $\delta_j$ to a mesh vertex, creating a piecewise
+          constant landscape with Voronoi-cell-sized neutral plateaus.
     \item $\boldsymbol{\kappa}$: each bin resampled uniformly from
           $\{0,\dots,K{-}1\}$ with per-gene probability $p_\kappa$.
     \item $\boldsymbol{\rho}$: each value resampled from $\{0,1,2,3\}$
           with per-gene probability $p_\rho$.
-    \item $\pi$: swap of two randomly chosen positions with probability
-          $p_\pi$, preserving permutation validity.
-    \item $h$: resampled uniformly from $\mathcal{H}$ with probability $p_h$.
 \end{itemize}
 
 \paragraph{Elitism.}
-The single best individual (by fitness sum) is carried over unchanged to the
-next generation, ensuring monotone improvement of the best solution found.
+The top $e$ individuals (by fitness sum) are carried unchanged to the
+next generation, ensuring monotone improvement of the best-so-far
+solution.
+
+\paragraph{Search landscape characteristics.}
+The landscape presented to the EA is unusual in two respects.
+First, the $\boldsymbol{\delta}$ variables are nominally continuous but the
+KDTree snap creates a discrete Voronoi tessellation: many neighbouring
+$\boldsymbol{\delta}$ values map to the same mesh vertex, producing large
+neutral plateaus.
+Mutations that do not cross a Voronoi boundary have zero fitness effect,
+making the convergence profile characteristically step-like rather than
+smooth.
+Second, the Stage~2 Levenberg--Marquardt solver absorbs much of the local
+phase-correction signal, so that $\boldsymbol{\kappa}$ mutations contribute
+mainly when they shift patches into qualitatively different phase
+relationships that Stage~2 alone cannot reach.
+The effective search is therefore dominated by $\boldsymbol{\delta}$
+mutations that discover seam placements where the LSCM flattening produces
+inherently better-aligned patch boundaries.

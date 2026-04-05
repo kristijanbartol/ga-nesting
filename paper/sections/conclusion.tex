@@ -5,25 +5,26 @@ We presented a genetic algorithm for joint optimisation of garment pattern
 layout, seam-aware texture alignment, and garment fit preservation.
 By optimising seam positions directly on the 3D body mesh, our method
 grounds all pattern modifications in body geometry, making fit deviation
-an explicit and measurable objective rather than an implicit side effect of
-2D patch deformation.
-A global phase alignment stage and a discrete texture phase offset per patch
-allow the algorithm to exploit the full periodic symmetry of the fabric,
-which we model across a set of wallpaper groups including those with
-glide-reflection symmetry.
-Qualitative and quantitative comparisons against three baselines on
-three garment types demonstrate that the genetic algorithm finds solutions that
-balance fabric efficiency, texture alignment, and fit preservation in ways
-that greedy strategies cannot achieve.
+an explicit and measurable objective.
+A global phase alignment stage and discrete texture phase offsets per patch
+exploit the full periodic symmetry of the fabric, modelled across eight
+wallpaper groups including those with glide-reflection symmetry.
+For complex garments where the combinatorial phase space makes exhaustive
+search intractable, the GA is the only method that can jointly explore seam
+positions and phase assignments.
+Experiments on two garment types with up to 1{,}100 pattern pieces
+demonstrate that the GA consistently improves texture alignment over all
+baselines without sacrificing fabric efficiency.
 
-\paragraph{Limitations.}
-The nesting engine uses a bottom-left heuristic, which is simple and
-sufficient for our purposes but does not guarantee optimal fabric utilisation
-for the nesting sub-problem in isolation.
-A practical limitation of the current pipeline is that a small fraction of
-individuals in the population fail during geometry processing: geodesic path
-computation or LSCM parameterization can fail for certain seam configurations,
-causing those individuals to receive a penalty fitness and be excluded from
-selection.
-Reducing this failure rate through more robust geometry processing would
-improve the effective population size and convergence behaviour.
+\paragraph{Limitations and future work.}
+The nesting engine uses a bottom-left heuristic; substituting an
+NFP-based solver~\cite{MartinezSykoraACRO22} could improve fabric
+utilisation without affecting the other contributions.
+A small fraction of individuals fail during geometry processing (geodesic
+or LSCM failures), receiving penalty fitness; more robust geometry
+processing would improve effective population size.
+The discrete Voronoi structure of the $\boldsymbol{\delta}$ landscape
+(Section~\ref{sec:ea}) causes many neutral mutations; adaptive step-size
+control or landscape-aware operators could accelerate convergence.
+Finally, extending the framework to multiple body shapes and sizes within
+a single fabric roll is a natural next step toward industrial deployment.

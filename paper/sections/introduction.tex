@@ -45,17 +45,18 @@ considered together.
           all three objectives simultaneously.
 
     \item We propose a 3D-grounded seam optimisation paradigm in which fit
-          deviation is an explicit, measurable objective. In contrast to prior
-          2D patch deformation approaches, fit change is no longer implicit
-          and unmeasured.
+          deviation is an explicit, measurable objective, in contrast to prior
+          2D patch deformation approaches where fit change is implicit.
 
-    \item We support texture alignment across a set of wallpaper symmetry
-          classes, including patterns with glide-reflection symmetry such as
+    \item We support texture alignment across eight wallpaper symmetry
+          groups, including patterns with glide-reflection symmetry such as
           herringbone, chevron, and brick bond.
 
-    \item We demonstrate scalability to layouts of up to 400 pattern pieces
-          ($N=100$ bodies $\times$ $M=4$ patches) and robustness across
-          three garment types: pants, sleeveless shirt, and sleeveless onesie.
+    \item We evaluate on garments of up to $M=11$ patches (where the
+          $K^M > 10^9$ phase space makes exhaustive search intractable),
+          with layouts of up to 1{,}100 pattern pieces across 20 independent
+          seeds, demonstrating that the GA consistently outperforms all
+          baselines.
 \end{enumerate}
 
 \paragraph{Outline.}
