@@ -77,10 +77,6 @@ Their objective is to optimise seam placement for minimal flattening
 distortion, whereas our method optimises seam placement for texture
 alignment under fabric roll constraints.
 
-Our method addresses the limitations of both lines of work: fabric roll
-constraints and material efficiency are explicit objectives, fit deviation
-is quantified and minimised as a separate objective, and seam modifications
-are grounded in 3D body geometry rather than applied to 2D patches.
 
 % ---------------------------------------------------------------------------
 \subsection{Multi-Objective Evolutionary Algorithms and Mixed-Type Genotypes}
@@ -106,6 +102,4 @@ Li et al.~\cite{LiEEBSDR13} formalise this principle in Mixed Integer
 Evolution Strategies (MIES), defining separate self-adaptive mutation
 operators for continuous, integer, and nominal discrete variables within
 a unified algorithm.
-Our design follows this principle: Gaussian perturbation for the continuous
-seam parameters, uniform resampling for the discrete phase and orientation
-variables, and swap mutation for the permutation-valued nesting order.
+Our design follows this principle, as detailed in Section~\ref{sec:ea}.

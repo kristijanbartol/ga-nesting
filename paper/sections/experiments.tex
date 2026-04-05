@@ -71,16 +71,11 @@ $\boldsymbol{\kappa}$, not $\boldsymbol{\delta}$.
 We evaluate on two garment types of different topological complexity.
 
 \textbf{Onesie with sleeves} (\texttt{onesie\_sleeves}) is our primary
-evaluation garment: a full-body garment consisting of $M=11$ patches
-connected by 26 geodesic seams, of which 16 carry non-zero importance
-weights.
+evaluation garment: $M=11$ patches connected by 26 geodesic seams, of
+which 16 carry non-zero importance weights.
 The combination of torso, legs, and sleeves produces a rich seam network
 where stripe alignment across front/back panels, waist transitions,
 and sleeve attachments must all be resolved jointly.
-Crucially, with $K^M = 8^{11} \approx 8.6 \times 10^9$ phase
-combinations, exhaustive phase search (B2) is intractable, making this
-the setting where the GA's joint optimisation of $\boldsymbol{\delta}$ and
-$\boldsymbol{\kappa}$ is most clearly needed.
 
 \textbf{Pants} (\texttt{lower}) consists of $M=4$ patches connected by
 6 active geodesic seams.
@@ -264,17 +259,3 @@ to seam placement but still benefit from phase alignment.
 \end{figure}
 
 % ---------------------------------------------------------------------------
-\subsection{Ablation: Seam Position Optimisation}
-\label{sec:ablation}
-
-B2 provides the ablation for the seam position component: it uses the same
-Stage~2 alignment but fixes $\boldsymbol{\delta} = 0.5$ and optimises phase
-offsets only.
-On the pants garment, where B2 is exact, the GA still improves
-$f_\text{align}$, demonstrating that seam repositioning contributes beyond
-what is achievable by phase optimisation alone.
-On the onesie, the argument is even stronger: B2 can only sample a tiny
-fraction ($5 \times 10^5$ of $8.6 \times 10^9$) of the phase space, while
-the GA jointly searches over seam positions and phase offsets, exploring
-solutions that no baseline can reach.
-% TODO: fill improvement percentages once 20-seed runs complete
