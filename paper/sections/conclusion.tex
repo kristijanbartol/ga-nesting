@@ -1,20 +1,21 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-We presented a genetic algorithm for joint optimisation of garment pattern
-layout, seam-aware texture alignment, and garment fit preservation.
-By optimising seam positions directly on the 3D body mesh, our method
-grounds all pattern modifications in body geometry, making fit deviation
-an explicit and measurable objective.
+We formulated garment pattern layout as a joint optimisation over seam
+positions, fabric efficiency, texture alignment, and fit preservation,
+and demonstrated its solvability with a mixed-integer evolution strategy.
+By optimising seam positions directly on the 3D body mesh, all pattern
+modifications are grounded in body geometry, making fit deviation an
+explicit and measurable objective.
 A global phase alignment stage and discrete texture phase offsets per patch
 exploit the full periodic symmetry of the fabric, modelled across eight
 wallpaper groups including those with glide-reflection symmetry.
 For complex garments where the combinatorial phase space makes exhaustive
-search intractable, the GA is the only evaluated method that jointly explores
-seam positions and phase assignments.
+search intractable, the evolution strategy is the only evaluated method
+that jointly explores seam positions and phase assignments.
 Experiments on two garment types with up to 1{,}100 pattern pieces
-demonstrate that the GA consistently improves texture alignment over all
-baselines without sacrificing fabric efficiency.
+demonstrate consistent improvement in texture alignment over all baselines
+without sacrificing fabric efficiency.
 
 \paragraph{Limitations and future work.}
 The nesting engine uses a bottom-left heuristic; substituting an

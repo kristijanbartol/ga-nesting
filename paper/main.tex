@@ -48,15 +48,14 @@ changes in body geometry so they can be explicitly measured and penalised.
 The periodic structure of the fabric is modelled via wallpaper symmetry
 groups, including patterns with glide-reflection symmetry such as
 herringbone and chevron.
-The problem is solved with a genetic algorithm using variable-specific
-operators for its mixed genotype of continuous seam parameters, discrete
-phase offsets, and grain orientations.
-For complex garments, the combinatorial phase space ($K^M > 10^9$) makes
-exhaustive search intractable; among the methods we evaluate, only the GA
-jointly explores seam positions and phase assignments.
+The mixed search space (continuous seam parameters, discrete phase offsets,
+grain orientations) and intractable combinatorial phase space
+($K^M > 10^9$ for complex garments) necessitate a metaheuristic solver;
+we employ a mixed-integer evolution strategy with variable-specific
+operators.
 Experiments on two garment types with layouts of up to 1{,}100 pattern
-pieces and 20 independent seeds show that the GA consistently improves
-texture alignment over all baselines without sacrificing fabric efficiency.
+pieces and 20 independent seeds show consistent improvement in texture
+alignment over all baselines without sacrificing fabric efficiency.
 \keywords{garment pattern nesting \and texture alignment \and
 evolutionary algorithm \and wallpaper groups \and seam optimisation}
 \end{abstract}
