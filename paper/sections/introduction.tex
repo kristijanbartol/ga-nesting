@@ -1,14 +1,13 @@
 \section{Introduction}
 \label{sec:introduction}
 
-The global apparel industry generates substantial fabric waste,
-a significant portion of which arises from inefficient placement of 2D garment
-panels (commonly called \emph{pattern pieces}) on the fabric roll prior
-to cutting.
+A major source of fabric waste in the apparel industry is inefficient
+placement of 2D garment panels (\emph{pattern pieces}) on the fabric roll
+prior to cutting.
 The task of arranging these panels to minimise wasted material is known as
-\emph{nesting} (or \emph{marker making}), and has been extensively studied as
-a combinatorial optimisation problem~\cite{BennellO08}.
-Classical nesting methods, as well as the prevailing industry standard,
+\emph{nesting} and has been extensively studied as a combinatorial
+optimisation problem~\cite{BennellO08}.
+Classical nesting methods and current industry practice
 treat texture as irrelevant: panels are placed purely for compactness,
 with no regard for whether the fabric pattern (stripes, checks, herringbone,
 or other periodic motifs) continues seamlessly across the seams of the
@@ -25,15 +24,15 @@ by the deformation are implicit and go unmeasured. There is no mechanism
 to bound or quantify how much the modified pattern deviates from the
 originally designed garment.
 
-Seam placement is best optimised in 3D, on the body surface,
-rather than by deforming flat patches.
+We argue that seam placement is more naturally optimised in 3D, on the
+body surface, rather than by deforming flat patches.
 Moving a seam line on the body mesh changes the 2D pattern only as a
 consequence of flattening, keeping the modification grounded in 3D geometry.
 Critically, this makes fit deviation explicit: the difference between
 the flattened and the original 3D surface can be directly measured and
 minimised as part of the optimisation.
 We formalise this into a joint optimisation problem over fabric efficiency,
-seam-aware texture alignment, and fit preservation---objectives that have
+seam-aware texture alignment, and fit preservation, objectives that have
 not previously been considered together.
 
 \paragraph{Contributions.}

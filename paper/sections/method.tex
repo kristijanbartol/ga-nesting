@@ -29,9 +29,9 @@
 
 We define the problem as
 \[
-\Psi = \langle M, \mathcal{T}, \mathcal{L}, \mathbf{w}, \Omega \rangle,
+\Psi = \langle \mathcal{M}, \mathcal{T}, \mathcal{L}, \mathbf{w}, \Omega \rangle,
 \]
-where $M = (V, E, F)$ is the 3D garment mesh
+where $\mathcal{M} = (V, E, F)$ is the 3D garment mesh
 (we use SMPL~\cite{LoperMRPB15}),
 $\mathcal{T}$ is a periodic fabric texture characterised by a lattice basis
 $B = \{\mathbf{u}, \mathbf{v}\}$,
@@ -59,7 +59,7 @@ accounted for in the mismatch computation.
 
 We support eight groups:
 PM (stripes), PMM (grid/plaid), P4 (pinwheel), P4M (pinwheel with mirrors),
-and three with glide-reflection symmetry---PG (herringbone), PMG (chevron),
+and three with glide-reflection symmetry: PG (herringbone), PMG (chevron),
 PGG (brick bond).
 Groups with rotational symmetry (PMM, P4, P4M) allow all grain-rotation
 pairs $(\rho_i, \rho_j)$; the remaining groups require
@@ -115,7 +115,8 @@ Restricting keypoints to semantically defined regions prevents degenerate cuts
 while still allowing the EA to explore meaningful seam placements.
 
 \paragraph{Fabric orientation ($\boldsymbol{\rho}$).}
-Cutting along seams yields $n$ 2D charts $P(\boldsymbol{\delta}) = \{p_1, \dots, p_n\}$.
+Cutting along seams yields $n$ 2D charts $\{p_1, \dots, p_n\}$,
+collectively denoted $P(\boldsymbol{\delta})$.
 Each chart is assigned a discrete grain orientation
 \[
 \rho_i \in \{0,1,2,3\}, \quad \theta_i = \rho_i \frac{\pi}{2},
@@ -124,19 +125,13 @@ which determines how the chart is rotated on the fabric roll.
 Compatibility with $\mathcal{G}$ is enforced at evaluation time.
 
 \paragraph{Texture phase offsets ($\boldsymbol{\kappa}$).}
-Because the fabric texture repeats periodically, placing a chart at different
-positions that are integer multiples of the period apart produces
-indistinguishable results.
-We exploit this freedom by assigning each chart a discrete phase bin
-\[
-\kappa_i \in \{0,1,\dots,K-1\},
-\]
-where $K$ is the number of bins per period.
-The bin determines a fractional offset $\kappa_i / K$ applied uniformly along
-both lattice axes, effectively choosing which repeat of the texture the chart
-is placed on.
-Optimising $\boldsymbol{\kappa}$ allows the EA to align stripe or grid bands
-across seams without moving the patches on the fabric.
+Because the texture repeats periodically, chart positions that differ by an
+integer multiple of the period are equivalent.
+Each chart is therefore assigned a discrete phase bin
+$\kappa_i \in \{0,1,\dots,K{-}1\}$,
+applying a fractional offset $\kappa_i / K$ along both lattice axes.
+Optimising $\boldsymbol{\kappa}$ aligns stripe or grid bands across seams
+without moving the patches on the fabric.
 
 \paragraph{Nesting variables ($\pi, h$).}
 The permutation $\pi \in S_n$ defines the order in which charts are placed
@@ -231,6 +226,8 @@ f_\text{align}(\mathbf{x}) = \sum_{s \in \mathcal{S}} w_s \cdot \mathrm{Mismatch
 \]
 
 \paragraph{Fit preservation guard ($f_\text{fit}$).}
+This objective acts as a guard constraint rather than a competing
+optimisation target.
 Moving a seam keypoint away from the quad midpoint changes the 3D surface
 area of the resulting patches.
 To prevent the EA from improving texture alignment by shrinking the garment,

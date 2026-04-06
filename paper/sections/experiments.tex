@@ -93,10 +93,13 @@ Table~\ref{tab:results_onesie} reports results for the onesie garment
 The GA consistently reduces $f_\text{align}$ relative to all baselines while
 maintaining comparable $f_\text{fabric}$, confirming that improved texture
 alignment does not come at the cost of material waste.
-The fit guard $f_\text{fit}$ is near zero across runs.
+The fit guard $f_\text{fit}$ is near zero across runs, confirming
+that the penalty (weighted at $w_\text{fit} = 10$) effectively prevents
+garment shrinkage without requiring manual tuning of seam bounds.
 On the onesie, where B2 can only sample a tiny fraction of the $8^{11}$
 phase space, the GA's joint optimisation of $\boldsymbol{\delta}$ and
-$\boldsymbol{\kappa}$ explores solutions that no baseline can reach.
+$\boldsymbol{\kappa}$ explores regions of the search space that no
+baseline can access.
 On pants, where B2 is exact, the GA still improves $f_\text{align}$,
 isolating the contribution of seam position optimisation.
 % TODO: fill quantitative improvement percentages once 20 seeds complete
@@ -216,7 +219,7 @@ meaningful progress.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\linewidth]{Fig/convergence}
+\includegraphics[width=\linewidth]{convergence}
 \caption{
   Best-so-far $F_\Sigma$ vs.\ generation for the onesie garment,
   mean $\pm$ std over 20 seeds per body count $N$.

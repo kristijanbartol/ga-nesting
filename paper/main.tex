@@ -9,6 +9,7 @@
 \usepackage{caption}
 \usepackage{subcaption}
 \usepackage{booktabs}
+\usepackage{multirow}
 \usepackage{hyperref}
 
 \graphicspath{{figures/}}
@@ -43,7 +44,7 @@ We propose a joint optimisation framework that simultaneously minimises
 fabric consumption, seam-wise texture misalignment, and garment fit
 deviation.
 Seam positions are optimised directly on the 3D body mesh, grounding fit
-changes in body geometry so they can be explicitly measured and bounded.
+changes in body geometry so they can be explicitly measured and penalised.
 The periodic structure of the fabric is modelled via wallpaper symmetry
 groups, including patterns with glide-reflection symmetry such as
 herringbone and chevron.
@@ -51,8 +52,8 @@ The problem is solved with a genetic algorithm using variable-specific
 operators for its mixed genotype of continuous seam parameters, discrete
 phase offsets, and grain orientations.
 For complex garments, the combinatorial phase space ($K^M > 10^9$) makes
-exhaustive search intractable, and the GA is the only method that can
-jointly explore seam positions and phase assignments.
+exhaustive search intractable; among the methods we evaluate, only the GA
+jointly explores seam positions and phase assignments.
 Experiments on two garment types with layouts of up to 1{,}100 pattern
 pieces and 20 independent seeds show that the GA consistently improves
 texture alignment over all baselines without sacrificing fabric efficiency.
