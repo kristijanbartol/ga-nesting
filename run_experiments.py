@@ -47,7 +47,7 @@ FABRIC_WIDTH_MM = 150.0 * 10.0
 
 def parse_args():
     p = argparse.ArgumentParser(description="Run systematic GA-Nesting experiments.")
-    p.add_argument("--garment", default="upper", choices=["upper", "lower"],
+    p.add_argument("--garment", default="upper", choices=["upper", "lower", "onesie_sleeves"],
                    help="Garment type (default: upper)")
     p.add_argument("--wallpaper", default="stripes",
                    choices=["stripes", "diagonal_stripes", "grid", "p4", "p4m", "pg", "pmg", "pgg"],
@@ -62,10 +62,28 @@ def parse_args():
                    help="List of body counts to sweep (default: 5 10 25 50 100)")
     p.add_argument("--w1", type=float, default=1.0,
                    help="Fitness weight for fabric height f1 (default: 1.0)")
-    p.add_argument("--w2", type=float, default=10.0,
-                   help="Fitness weight for seam phase mismatch f2 (default: 10.0)")
+    p.add_argument("--w2", type=float, default=1.0,
+                   help="Fitness weight for seam phase mismatch f2 (default: 1.0)")
     p.add_argument("--w4", type=float, default=10.0,
                    help="Fitness weight for 3D patch area deviation f4 (default: 10.0)")
+    p.add_argument("--elite", type=int, default=4,
+                   help="GA elite count (default: 4)")
+    p.add_argument("--tourn", type=int, default=4,
+                   help="GA tournament size (default: 4)")
+    p.add_argument("--xover", type=float, default=0.7,
+                   help="GA crossover probability (default: 0.7)")
+    p.add_argument("--mut", type=float, default=0.7,
+                   help="GA mutation probability (default: 0.7)")
+    p.add_argument("--p_kappa", type=float, default=0.35,
+                   help="Per-gene kappa flip probability (default: 0.35)")
+    p.add_argument("--sigma_delta", type=float, default=0.20,
+                   help="Gaussian sigma for delta mutation (default: 0.20)")
+    p.add_argument("--self_adapt", action="store_true", default=False,
+                   help="Enable MIES-style per-gene self-adaptive sigma for delta")
+    p.add_argument("--delta_lo", type=float, default=0.2,
+                   help="Lower bound for delta sampling and mutation (default: 0.2)")
+    p.add_argument("--delta_hi", type=float, default=0.8,
+                   help="Upper bound for delta sampling and mutation (default: 0.8)")
     return p.parse_args()
 
 
@@ -163,12 +181,12 @@ def _init_body_run(num_bodies: int, args) -> dict:
                 json.dump(results, f, indent=2)
 
         num_bodies_cfg = cfg["num_bodies"]
-        pop            = cfg["pop"]
-        gens           = cfg["gens"]
-        w1             = cfg["w1"]
-        w2             = cfg["w2"]
-        w4             = cfg.get("w4", args.w4)
-        wallpaper      = cfg.get("wallpaper", "stripes")
+        pop            = args.pop
+        gens           = args.gens
+        w1             = args.w1
+        w2             = args.w2
+        w4             = args.w4
+        wallpaper      = args.wallpaper
 
         print(f"[exp] bodies={num_bodies}: loaded '{out_dir}'"
               f"  ({len(completed)}/{total_runs} seeds done)")
@@ -198,6 +216,11 @@ def _init_body_run(num_bodies: int, args) -> dict:
             "fabric_width_mm": FABRIC_WIDTH_MM,
             "w1": w1, "w2": w2, "w4": w4,
             "wallpaper": wallpaper,
+            "elite": args.elite, "tourn": args.tourn,
+            "xover": args.xover, "mut": args.mut,
+            "p_kappa": args.p_kappa, "sigma_delta": args.sigma_delta,
+            "self_adapt": args.self_adapt,
+            "delta_lo": args.delta_lo, "delta_hi": args.delta_hi,
         }
 
         print(f"\n[exp] bodies={num_bodies}: running baselines...")
@@ -249,14 +272,31 @@ def _init_body_run(num_bodies: int, args) -> dict:
     evaluator   = RealEvaluator(eval_cfg)
     num_patches = len(evaluator.patch_ids)
 
+    # Compute area-sorted-descending permutation to match the nesting
+    # engine's default ordering (which baselines use).  Random pi with
+    # 11! ≈ 40M orderings is unsearchable with pop=50 × 10 gens.
+    from nesting.loader import PatchLoader as _PL
+    import re as _re
+    _loader = _PL(eval_cfg.latest_root, args.garment)
+    _items = _loader.load_items()
+    _items_by_pid = sorted(_items, key=lambda it: int(
+        _re.search(r"patch_(\d+)", it.name).group(1)))
+    _area_sorted_pi = np.array(
+        sorted(range(len(_items_by_pid)),
+               key=lambda i: _items_by_pid[i].area, reverse=True),
+        dtype=int,
+    )
+
     inst = GAInstance(
         num_patches=num_patches,
         K=eval_cfg.K,
         num_landmarks=evaluator.instance.num_sampled_landmarks,
         num_bodies=num_bodies_cfg,
+        delta_lo=args.delta_lo,
+        delta_hi=args.delta_hi,
         fixed_rho=np.zeros(num_patches * num_bodies_cfg, dtype=int),
-        fixed_pi=None,
-        fixed_h=None,
+        fixed_pi=_area_sorted_pi,
+        fixed_h=0,
         num_heuristics=3,
     )
 
@@ -265,6 +305,14 @@ def _init_body_run(num_bodies: int, args) -> dict:
         "total_runs":   total_runs,
         "pop":          pop,
         "gens":         gens,
+        "elite":        args.elite,
+        "tourn":        args.tourn,
+        "xover":        args.xover,
+        "mut":          args.mut,
+        "p_kappa":      args.p_kappa,
+        "sigma_delta":  args.sigma_delta,
+        "delta_lo":     args.delta_lo,
+        "delta_hi":     args.delta_hi,
         "out_dir":      out_dir,
         "results_path": results_path,
         "conv_path":    conv_path,
@@ -298,12 +346,13 @@ def _run_one_seed(state: dict, seed: int) -> None:
         seed=seed,
         population_size=pop,
         generations=gens,
-        elite_count=4,
-        tournament_k=4,
-        crossover_prob=0.7,
-        mutation_prob=0.7,
-        prob_flip_kappa=0.35,
-        weight_sigma=0.20,
+        elite_count=state["elite"],
+        tournament_k=state["tourn"],
+        crossover_prob=state["xover"],
+        mutation_prob=state["mut"],
+        prob_flip_kappa=state["p_kappa"],
+        weight_sigma=state["sigma_delta"],
+        self_adapt_sigma=state["self_adapt"],
     )
 
     pop_result, conv_log = run_ga(state["inst"], state["evaluator"], ga_cfg)

@@ -21,8 +21,8 @@ class GAInstance:
     # Constrain delta sampling and mutation to [delta_lo, delta_hi] around the
     # 0.5 baseline, reducing the chance of landmarks landing in geometrically
     # degenerate mesh regions. Full range is [0.0, 1.0].
-    delta_lo: float = 0.3
-    delta_hi: float = 0.7
+    delta_lo: float = 0.5
+    delta_hi: float = 0.5
 
     # Optional: fixed values to keep pipeline simple initially
     fixed_delta: Optional[np.ndarray] = None
@@ -46,6 +46,7 @@ class Genome:
     kappa: np.ndarray
     pi: np.ndarray
     h: int
+    sigma: np.ndarray = field(default_factory=lambda: np.array([], dtype=float))
 
 
 @dataclass
@@ -88,6 +89,13 @@ class GAConfig:
     prob_flip_h: float = 0.25
     weight_sigma: float = 0.15
 
+    # Self-adaptive step-size for delta (MIES-style log-normal adaptation).
+    # When enabled, each gene carries its own sigma that co-evolves.
+    # weight_sigma is used as the initial sigma for all genes.
+    self_adapt_sigma: bool = False
+    sigma_min: float = 0.01
+    sigma_max: float = 0.50
+
 
 def dominates(a: Fitness, b: Fitness) -> bool:
     av, bv = a.values, b.values
@@ -106,7 +114,7 @@ def tournament_select(pop: Sequence[Individual], k: int, rng: random.Random) -> 
     return best
 
 
-def random_genome(inst: GAInstance, rng: random.Random) -> Genome:
+def random_genome(inst: GAInstance, rng: random.Random, cfg: GAConfig = None) -> Genome:
     num_p = inst.num_patches
 
     delta = inst.fixed_delta.copy() if inst.fixed_delta is not None else \
@@ -132,7 +140,11 @@ def random_genome(inst: GAInstance, rng: random.Random) -> Genome:
 
     kappa = np.array([rng.randrange(inst.K) for _ in range(num_p)], dtype=int)
 
-    return Genome(delta=delta, rho=rho, kappa=kappa, pi=pi, h=h)
+    # Per-gene step sizes for delta (used when self_adapt_sigma=True)
+    init_sigma = cfg.weight_sigma if cfg is not None else 0.15
+    sigma = np.full(delta.shape, init_sigma) if delta.size > 0 else np.array([], dtype=float)
+
+    return Genome(delta=delta, rho=rho, kappa=kappa, pi=pi, h=h, sigma=sigma)
 
 
 
@@ -143,12 +155,15 @@ def crossover(g1: Genome, g2: Genome, inst: GAInstance, rng: random.Random) -> T
     - rho: uniform per gene (0..3)
     - pi: choose whole permutation from one parent (keeps validity)
     """
-    # delta: uniform per gene, clamp to [0,1]
+    # delta + sigma: uniform per gene, same swap mask for co-adaptation
     d1, d2 = g1.delta.copy(), g2.delta.copy()
+    s1, s2 = g1.sigma.copy(), g2.sigma.copy()
     if inst.fixed_delta is None:
         for i in range(d1.size):
             if rng.random() < 0.5:
                 d1[i], d2[i] = d2[i], d1[i]
+                if i < s1.size:
+                    s1[i], s2[i] = s2[i], s1[i]
 
     # kappa
     k1, k2 = g1.kappa.copy(), g2.kappa.copy()
@@ -173,8 +188,8 @@ def crossover(g1: Genome, g2: Genome, inst: GAInstance, rng: random.Random) -> T
     else:
         h1, h2 = g2.h, g1.h
 
-    c1 = Genome(delta=d1, rho=r1, kappa=k1, pi=p1, h=int(h1))
-    c2 = Genome(delta=d2, rho=r2, kappa=k2, pi=p2, h=int(h2))
+    c1 = Genome(delta=d1, rho=r1, kappa=k1, pi=p1, h=int(h1), sigma=s1)
+    c2 = Genome(delta=d2, rho=r2, kappa=k2, pi=p2, h=int(h2), sigma=s2)
     return c1, c2
 
 
@@ -184,10 +199,22 @@ def mutate(g: Genome, inst: GAInstance, cfg: GAConfig, rng: random.Random) -> Ge
     rho = g.rho.copy()
     pi = g.pi.copy()
     delta = g.delta.copy()
+    sigma = g.sigma.copy()
 
-    # gaussian noise on delta, clamp to allowed range
+    # delta mutation with optional self-adaptive step sizes (MIES-style)
     if inst.fixed_delta is None and delta.size > 0:
-        delta = delta + np.random.normal(0.0, cfg.weight_sigma, size=delta.shape)
+        if cfg.self_adapt_sigma and sigma.size == delta.size:
+            # Log-normal self-adaptation: mutate sigma first, then use it
+            n = delta.size
+            tau_prime = 1.0 / np.sqrt(2.0 * n)
+            tau = 1.0 / np.sqrt(2.0 * np.sqrt(n))
+            global_noise = np.random.normal(0.0, 1.0)
+            per_gene_noise = np.random.normal(0.0, 1.0, size=n)
+            sigma = sigma * np.exp(tau_prime * global_noise + tau * per_gene_noise)
+            sigma = np.clip(sigma, cfg.sigma_min, cfg.sigma_max)
+            delta = delta + np.random.normal(0.0, 1.0, size=n) * sigma
+        else:
+            delta = delta + np.random.normal(0.0, cfg.weight_sigma, size=delta.shape)
         delta = np.clip(delta, inst.delta_lo, inst.delta_hi)
 
     # flip some kappas
@@ -214,7 +241,7 @@ def mutate(g: Genome, inst: GAInstance, cfg: GAConfig, rng: random.Random) -> Ge
         H = max(1, int(inst.num_heuristics))
         h = int(rng.randrange(H))
 
-    return Genome(delta=delta, rho=rho, kappa=kappa, pi=pi, h=h)
+    return Genome(delta=delta, rho=rho, kappa=kappa, pi=pi, h=h, sigma=sigma)
 
 
 def _pop_table(pop: List[Individual], label: str) -> None:
@@ -242,12 +269,19 @@ def evaluate_population(pop: List[Individual], evaluator: Evaluator) -> None:
 
 def _conv_entry(gen: int, pop: "List[Individual]") -> dict:
     best = min(pop, key=lambda ind: ind.fitness.values.sum())  # type: ignore
-    return {
+    entry = {
         "gen":        gen,
         "best_f_sum": float(best.fitness.values.sum()),
         "best_f1_mm": float(best.meta.get("f1_height_mm", float("nan"))),
         "best_f2":    float(best.meta.get("f2_phase",     float("nan"))),
     }
+    # Log mean sigma across population (useful for self-adaptation analysis)
+    sigmas = [ind.genome.sigma for ind in pop if ind.genome.sigma.size > 0]
+    if sigmas:
+        all_sigma = np.stack(sigmas)
+        entry["mean_sigma"] = float(all_sigma.mean())
+        entry["std_sigma"] = float(all_sigma.std())
+    return entry
 
 
 def run_ga(
@@ -260,7 +294,8 @@ def run_ga(
     print(f"  pop={cfg.population_size}  gens={cfg.generations}  K={inst.K}"
           f"  elite={cfg.elite_count}  tournament_k={cfg.tournament_k}")
     print(f"  crossover={cfg.crossover_prob}  mutation={cfg.mutation_prob}"
-          f"  prob_flip_kappa={cfg.prob_flip_kappa}  weight_sigma={cfg.weight_sigma}")
+          f"  prob_flip_kappa={cfg.prob_flip_kappa}  weight_sigma={cfg.weight_sigma}"
+          f"  self_adapt_sigma={cfg.self_adapt_sigma}")
     print(f"  fixed: delta={'no' if inst.fixed_delta is None else 'yes'}"
           f"  rho={'no' if inst.fixed_rho is None else 'yes'}"
           f"  pi={'no' if inst.fixed_pi is None else 'yes'}"
@@ -270,7 +305,7 @@ def run_ga(
               f"  (perturbation ±{inst.delta_hi - 0.5:.2f} around 0.5 baseline)")
 
     print("\n=== Initial Population ===")
-    pop = [Individual(genome=random_genome(inst, rng)) for _ in range(cfg.population_size)]
+    pop = [Individual(genome=random_genome(inst, rng, cfg)) for _ in range(cfg.population_size)]
     evaluate_population(pop, evaluator)
     _pop_table(pop, "Initial population:")
 

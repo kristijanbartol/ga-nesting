@@ -272,6 +272,7 @@ if __name__ == "__main__":
             kappa=np.array(saved["kappa"], dtype=int),
             pi=np.array(saved["pi"],    dtype=int),
             h=int(saved["h"]),
+            sigma=np.array(saved.get("sigma", [0.15] * len(saved["delta"]))),
         )
     else:
         print("[panel3] No saved genome found – using baseline (delta=0.5, kappa=0, rho=0)")
@@ -281,6 +282,7 @@ if __name__ == "__main__":
             kappa=np.zeros(num_patches, dtype=int),
             pi=np.arange(num_patches, dtype=int),
             h=0,
+            sigma=np.full(2 * num_landmarks, 0.15),
         )
 
     # ----------------------------------------------------------------- evaluate

@@ -210,7 +210,7 @@ def save_best_individual_data(best_ind,
 def parse_args():
     import argparse
     p = argparse.ArgumentParser(description="Run GA-Nesting optimisation.")
-    p.add_argument("--garment", default="upper", choices=["upper", "lower"],
+    p.add_argument("--garment", default="upper", choices=["upper", "lower", "onesie_sleeves"],
                    help="Garment type (default: upper)")
     p.add_argument("--wallpaper", default="stripes", choices=["stripes", "diagonal_stripes", "grid", "p4", "p4m", "pg", "pmg", "pgg"],
                    help="Texture wallpaper group (default: stripes)")
@@ -224,10 +224,14 @@ def parse_args():
                    help="Random seed (default: 0)")
     p.add_argument("--w1", type=float, default=1.0,
                    help="Fitness weight for fabric height f1 (default: 1.0)")
-    p.add_argument("--w2", type=float, default=10.0,
-                   help="Fitness weight for seam phase mismatch f2 (default: 10.0)")
+    p.add_argument("--w2", type=float, default=1.0,
+                   help="Fitness weight for seam phase mismatch f2 (default: 1.0)")
     p.add_argument("--w4", type=float, default=10.0,
                    help="Fitness weight for garment area reduction f4 (default: 10.0)")
+    p.add_argument("--self_adapt", action="store_true", default=False,
+                   help="Enable MIES-style per-gene self-adaptive sigma for delta")
+    p.add_argument("--no_vis", action="store_true",
+                   help="Skip all matplotlib visualization (for headless/batch runs)")
     return p.parse_args()
 
 
@@ -253,6 +257,18 @@ def main():
 
     num_patches = len(evaluator.patch_ids)
 
+    # Compute area-sorted-descending permutation (matches nesting engine default).
+    import re as _re
+    _loader = PatchLoader(eval_cfg.latest_root, GARMENT_TYPE)
+    _items = _loader.load_items()
+    _items_by_pid = sorted(_items, key=lambda it: int(
+        _re.search(r"patch_(\d+)", it.name).group(1)))
+    _area_sorted_pi = np.array(
+        sorted(range(len(_items_by_pid)),
+               key=lambda i: _items_by_pid[i].area, reverse=True),
+        dtype=int,
+    )
+
     # Fix rho=0 for all patches.  Optimizing rho is unsound for horizontal stripe
     # fabrics: rotating both patches by the same 90° preserves seam phase alignment
     # (same parity → penalty doesn't fire) but makes stripes run vertically on the
@@ -264,8 +280,8 @@ def main():
         num_landmarks=evaluator.instance.num_sampled_landmarks,
         num_bodies=eval_cfg.num_bodies,
         fixed_rho=np.zeros(num_patches * eval_cfg.num_bodies, dtype=int),
-        fixed_pi=None,
-        fixed_h=None,
+        fixed_pi=_area_sorted_pi,
+        fixed_h=0,
         num_heuristics=3,
     )
 
@@ -279,12 +295,14 @@ def main():
         mutation_prob=0.7,
         prob_flip_kappa=0.35,
         weight_sigma=0.20,
+        self_adapt_sigma=args.self_adapt,
     )
 
     pop, _ = run_ga(inst, evaluator, cfg)
 
     # Visualize all individuals ordered best → worst
-    visualize_population(pop, evaluator.instance.texture, title="Final population — best (top-left) to worst (bottom-right)")
+    if not args.no_vis:
+        visualize_population(pop, evaluator.instance.texture, title="Final population — best (top-left) to worst (bottom-right)")
 
     # Sort population the same way visualize_population does, then compare.
     sorted_pop = sorted(
@@ -322,6 +340,7 @@ def main():
             "kappa":          best.genome.kappa.tolist(),
             "rho":            best.genome.rho.tolist(),
             "delta":          best.genome.delta.tolist(),
+            "sigma":          best.genome.sigma.tolist(),
             "pi":             best.genome.pi.tolist(),
             "h":              int(best.genome.h),
             "K":              eval_cfg.K,
@@ -348,53 +367,54 @@ def main():
     # Use the same stored patches as the best individual; only kappas differ.
     patch_ids_best = sorted(best.meta["V_centered_by_id"].keys())
     baseline_kappas = {pid: 0 for pid in patch_ids_best}
-    Tsol_base = solve_global_alignment_all_components(
-        patch_ids=patch_ids_best,
-        constraints=best.meta["weighted_constraints"],
-        patch_vertices_by_id=best.meta["V_centered_by_id"],
-        lattice=evaluator.lattice,
-        kappas_by_id=baseline_kappas,
-        K=eval_cfg.K,
-        initial_transforms={pid: Rigid2D(0.0, 0.0, 0.0) for pid in patch_ids_best},
-        max_iters=15,
-        verbose=False,
-    )
-    # Build baseline fabric_state from the stored Stage2-baked items — same
-    # geometry as the best individual, kappa=0, no disk I/O.
-    base_fabric_items = []
-    for b in range(eval_cfg.num_bodies):
-        for item_idx, base_it in enumerate(best.meta["base_items"]):
-            it = deepcopy(base_it)
-            it.name = f"body_{b}/{base_it.name}"
-            it.phase_offset = (0.0, 0.0)
-            it.set_rotation(0.0)
-            base_fabric_items.append(it)
-    base_engine = NestingEngine(fabric_width=eval_cfg.fabric_width_mm, texture_spec=evaluator.instance.texture)
-    baseline_fabric_state = base_engine.nest(base_fabric_items)
-    visualize_layout(baseline_fabric_state, evaluator.instance.texture, title="BASELINE (kappa=0)")
-    plot_seam_mismatch(
-        best.meta["weighted_constraints"],
-        best.meta["V_centered_by_id"],
-        evaluator.lattice,
-        baseline_kappas,
-        eval_cfg.K,
-        Tsol_base,
-        "BASELINE (kappa=0)",
-    )
+    if not args.no_vis:
+        Tsol_base = solve_global_alignment_all_components(
+            patch_ids=patch_ids_best,
+            constraints=best.meta["weighted_constraints"],
+            patch_vertices_by_id=best.meta["V_centered_by_id"],
+            lattice=evaluator.lattice,
+            kappas_by_id=baseline_kappas,
+            K=eval_cfg.K,
+            initial_transforms={pid: Rigid2D(0.0, 0.0, 0.0) for pid in patch_ids_best},
+            max_iters=15,
+            verbose=False,
+        )
+        # Build baseline fabric_state from the stored Stage2-baked items — same
+        # geometry as the best individual, kappa=0, no disk I/O.
+        base_fabric_items = []
+        for b in range(eval_cfg.num_bodies):
+            for item_idx, base_it in enumerate(best.meta["base_items"]):
+                it = deepcopy(base_it)
+                it.name = f"body_{b}/{base_it.name}"
+                it.phase_offset = (0.0, 0.0)
+                it.set_rotation(0.0)
+                base_fabric_items.append(it)
+        base_engine = NestingEngine(fabric_width=eval_cfg.fabric_width_mm, texture_spec=evaluator.instance.texture)
+        baseline_fabric_state = base_engine.nest(base_fabric_items)
+        visualize_layout(baseline_fabric_state, evaluator.instance.texture, title="BASELINE (kappa=0)")
+        plot_seam_mismatch(
+            best.meta["weighted_constraints"],
+            best.meta["V_centered_by_id"],
+            evaluator.lattice,
+            baseline_kappas,
+            eval_cfg.K,
+            Tsol_base,
+            "BASELINE (kappa=0)",
+        )
 
-    # ── BEST (GA kappa) ─────────────────────────────────────────────────────
-    # Both nesting layout and seam analysis come from stored evaluation data —
-    # guaranteed to be the same individual as the population top-left thumbnail.
-    visualize_layout(best.meta["fabric_state"], evaluator.instance.texture, title="BEST (GA kappa)")
-    plot_seam_mismatch(
-        best.meta["weighted_constraints"],
-        best.meta["V_centered_by_id"],
-        evaluator.lattice,
-        best.meta["kappas_by_id"],
-        eval_cfg.K,
-        best.meta["Tsol"],
-        "BEST (GA kappa)",
-    )
+        # ── BEST (GA kappa) ─────────────────────────────────────────────────────
+        # Both nesting layout and seam analysis come from stored evaluation data —
+        # guaranteed to be the same individual as the population top-left thumbnail.
+        visualize_layout(best.meta["fabric_state"], evaluator.instance.texture, title="BEST (GA kappa)")
+        plot_seam_mismatch(
+            best.meta["weighted_constraints"],
+            best.meta["V_centered_by_id"],
+            evaluator.lattice,
+            best.meta["kappas_by_id"],
+            eval_cfg.K,
+            best.meta["Tsol"],
+            "BEST (GA kappa)",
+        )
 
     Tsol = best.meta["Tsol"]
     kappas_by_id = best.meta["kappas_by_id"]
