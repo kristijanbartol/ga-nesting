@@ -11,6 +11,7 @@ Decisions:
 Reports f1 (fabric height) and f2 (raw seam phase mismatch) so results
 are directly comparable to GA runs.
 """
+import argparse
 import re
 import os
 import numpy as np
@@ -23,15 +24,17 @@ from nesting.phase_utils import TextureLattice, Rigid2D, seam_phase_mismatch
 from nesting.stage2_global_align import load_seam_constraints_from_dir, solve_global_alignment_all_components
 from nesting.vis_utils import visualize_layout, plot_seam_mismatch
 from spec import SeamPathType
+from wallpaper import get_policy
 
 
-GARMENT_TYPE  = "upper"
-LATEST_ROOT   = "results/pattern/latest"
-SEAM_DIR      = f"data/seamlines/{GARMENT_TYPE}"
-PERIOD_U_MM   = 50.0
-PERIOD_V_MM   = 50.0
+GARMENT_TYPE    = "upper"
+WALLPAPER_GROUP = "stripes"
+LATEST_ROOT     = "results/pattern/latest"
+SEAM_DIR        = f"data/seamlines/{GARMENT_TYPE}"
+PERIOD_U_MM     = 50.0
+PERIOD_V_MM     = 50.0
 FABRIC_WIDTH_MM = 150.0 * 10.0
-K             = 8
+K               = 8
 
 
 def _seam_importance_map(instance):
@@ -55,10 +58,14 @@ def _weights_by_filename(seam_dir, importance_by_name):
     return result
 
 
-def run(garment_type: str = GARMENT_TYPE, num_bodies: int = 1) -> dict:
+def run(garment_type: str = GARMENT_TYPE, num_bodies: int = 1,
+        wallpaper_group: str = WALLPAPER_GROUP) -> dict:
     """Run B0 headlessly and return {f1_mm, f1_norm, f2, f_sum, fabric_state, ...}."""
     from copy import deepcopy
     seam_dir = f"data/seamlines/{garment_type}"
+    policy = get_policy(wallpaper_group)
+    u_dir, v_dir = policy.lattice_directions()
+    pa = policy.phase_axes()
 
     instance, mesh = build_instance(
         mesh_path="data/SMPL_FEMALE.ply",
@@ -93,8 +100,8 @@ def run(garment_type: str = GARMENT_TYPE, num_bodies: int = 1) -> dict:
         default_weight=0.0,
     )
     lattice = TextureLattice(
-        u_dir=np.array([1.0, 0.0]),
-        v_dir=np.array([0.0, 1.0]),
+        u_dir=u_dir,
+        v_dir=v_dir,
         period_u=PERIOD_U_MM,
         period_v=PERIOD_V_MM,
     )
@@ -116,6 +123,7 @@ def run(garment_type: str = GARMENT_TYPE, num_bodies: int = 1) -> dict:
         initial_transforms=T0,
         max_iters=15,
         verbose=False,
+        phase_axes=pa,
     )
 
     f2 = 0.0
@@ -130,6 +138,7 @@ def run(garment_type: str = GARMENT_TYPE, num_bodies: int = 1) -> dict:
             patch_j_vertices_xy=Tj.apply(V_centered_by_id[c.patch_j]),
             lattice=lattice,
             kappa_i=0, kappa_j=0, K=K, weight=c.weight,
+            phase_axes=pa,
         )
 
     print(f"[B0] f1={f1:.1f}mm  f2={f2:.4f}  f_sum={f1_norm + f2:.4f}")
@@ -143,12 +152,44 @@ def run(garment_type: str = GARMENT_TYPE, num_bodies: int = 1) -> dict:
 
 
 def main():
-    result = run(GARMENT_TYPE, num_bodies=1)
+    parser = argparse.ArgumentParser(description="Baseline B0: pure greedy nesting")
+    parser.add_argument("--simulate", action="store_true",
+                        help="Run cloth simulation after nesting")
+    parser.add_argument("--garment-type", default=GARMENT_TYPE,
+                        help=f"Garment type (default: {GARMENT_TYPE})")
+    parser.add_argument("--num-bodies", type=int, default=1,
+                        help="Number of bodies to nest (default: 1)")
+    parser.add_argument("--wallpaper", default=WALLPAPER_GROUP,
+                        choices=["stripes", "diagonal_stripes", "grid", "p4", "p4m", "pg", "pmg", "pgg"],
+                        help=f"Texture wallpaper group (default: {WALLPAPER_GROUP})")
+    args = parser.parse_args()
+
+    garment_type = args.garment_type
+    result = run(garment_type, num_bodies=args.num_bodies, wallpaper_group=args.wallpaper)
     visualize_layout(result["fabric_state"], result["instance"].texture,
                      title="B0 — Pure Greedy (no texture alignment)")
+    policy = get_policy(args.wallpaper)
     plot_seam_mismatch(result["constraints"], result["V_centered_by_id"],
                        result["lattice"], result["kappas_by_id"], K,
-                       result["transforms"], title="B0 — Seam Phase Mismatch")
+                       result["transforms"], title="B0 — Seam Phase Mismatch",
+                       phase_axes=policy.phase_axes())
+
+    if args.simulate:
+        from geometry.simulation import run_headless_simulation
+        out_dir = f"results/simulation/{garment_type}/b0"
+        print(f"\n[B0] Running cloth simulation → {out_dir}/")
+        run_headless_simulation(
+            avatar='data/SMPL_FEMALE.ply',
+            garment_type=garment_type,
+            tsol=result["transforms"],
+            kappas_by_id=result["kappas_by_id"],
+            K=K,
+            period_u_mm=PERIOD_U_MM,
+            period_v_mm=PERIOD_V_MM,
+            pattern_root=LATEST_ROOT,
+            patches_dir=f"data/patches/{garment_type}",
+            out_dir=out_dir,
+        )
 
 
 if __name__ == "__main__":

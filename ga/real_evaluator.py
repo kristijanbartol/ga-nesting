@@ -315,6 +315,7 @@ class RealEvaluator:
             initial_transforms=T0,
             max_iters=15,
             verbose=False,
+            phase_axes=self.policy.phase_axes(),
         )
         t_stage2 = time.time() - t0
 
@@ -390,9 +391,14 @@ class RealEvaluator:
         num_total = N * M
         pi = None
         if g.pi is not None and g.pi.size == M:
-            # Shared M-patch permutation expanded to body-major N*M order:
-            # all patches of body 0 in pi-order, then body 1, etc.
-            pi = [b * M + int(patch_idx) for b in range(N) for patch_idx in g.pi]
+            # Shared M-patch permutation expanded to patch-major N*M order:
+            # for each rank in pi, place that patch from ALL bodies before
+            # moving to the next rank.  This matches the engine's default
+            # global area-sort (permutation=None) which interleaves bodies,
+            # ensuring copies of the same large patch are placed together.
+            # Body-major ordering (all patches of body 0, then body 1, ...)
+            # creates jagged skylines that worsen with N.
+            pi = [b * M + int(patch_idx) for patch_idx in g.pi for b in range(N)]
         elif g.pi is not None and g.pi.size == num_total:
             pi = [int(x) for x in g.pi.tolist()]
 
@@ -459,6 +465,7 @@ class RealEvaluator:
                     transform_i=None,
                     transform_j=None,
                     glide_transforms=self.policy.glide_transforms(),
+                    phase_axes=self.policy.phase_axes(),
                 )
             f2_total += f2_body
 

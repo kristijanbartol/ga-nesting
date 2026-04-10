@@ -42,7 +42,8 @@ def apply_kappa_to_items(items, genome, K, texture, pid_to_item_idx):
 
 def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome, K, title, garment_part,
                   seam_importance_by_name=None, num_bodies=1, show_layout=True,
-                  precomputed_tsol=None, precomputed_kappas_by_id=None):
+                  precomputed_tsol=None, precomputed_kappas_by_id=None,
+                  phase_axes=None):
     print(f"\n[nest_and_show] '{title}'  rho={genome.rho.tolist()}  kappa={genome.kappa.tolist()}")
     loader = PatchLoader(latest_root, garment_part)
     base_items = loader.load_items()
@@ -152,7 +153,8 @@ def nest_and_show(latest_root, seam_dir, lattice, texture, fabric_width, genome,
 
     # Plot per-seam phase mismatch (body-0 only — geometry is shared)
     from nesting.vis_utils import plot_seam_mismatch
-    plot_seam_mismatch(weighted_constraints, V_centered_by_id, lattice, kappas_by_id, K, Tsol, title)
+    plot_seam_mismatch(weighted_constraints, V_centered_by_id, lattice, kappas_by_id, K, Tsol, title,
+                       phase_axes=phase_axes)
 
     return Tsol, kappas_by_id
 
@@ -400,6 +402,7 @@ def main():
             eval_cfg.K,
             Tsol_base,
             "BASELINE (kappa=0)",
+            phase_axes=evaluator.policy.phase_axes(),
         )
 
         # ── BEST (GA kappa) ─────────────────────────────────────────────────────
@@ -414,6 +417,7 @@ def main():
             eval_cfg.K,
             best.meta["Tsol"],
             "BEST (GA kappa)",
+            phase_axes=evaluator.policy.phase_axes(),
         )
 
     Tsol = best.meta["Tsol"]

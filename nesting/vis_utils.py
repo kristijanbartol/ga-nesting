@@ -343,11 +343,17 @@ def visualize_population(pop, texture_spec, title=None, max_cols=6):
     plt.show()
 
 
-def plot_seam_mismatch(constraints, V_full_by_id, lattice, kappas_by_id, K, transforms, title):
+def plot_seam_mismatch(constraints, V_full_by_id, lattice, kappas_by_id, K, transforms, title,
+                       phase_axes=None):
     """
     For each seam constraint, plot the per-point phase mismatch along the seam.
     X axis: point index along seam. Y axis: Delta(phi_i, phi_j) in [0, 0.5].
+
+    phase_axes: optional (use_u, use_v) — only active axes contribute to mismatch.
     """
+    from nesting.phase_utils import _axis_columns
+    ax_cols = _axis_columns(phase_axes)
+
     n = len(constraints)
     if n == 0:
         return
@@ -377,8 +383,8 @@ def plot_seam_mismatch(constraints, V_full_by_id, lattice, kappas_by_id, K, tran
         phi_i = frac(phase_uv(pts_i, lattice) + ki / float(K))
         phi_j = frac(phase_uv(pts_j, lattice) + kj / float(K))
 
-        diff = np.abs(phi_i - phi_j)
-        delta = np.minimum(diff, 1.0 - diff)          # (N, 2)
+        diff = np.abs(phi_i[:, ax_cols] - phi_j[:, ax_cols])
+        delta = np.minimum(diff, 1.0 - diff)          # (N, n_axes)
         mismatch = delta.mean(axis=1)                  # (N,) per point
 
         ax.plot(mismatch, lw=1.2)
