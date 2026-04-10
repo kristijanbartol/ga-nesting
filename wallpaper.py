@@ -44,6 +44,17 @@ class WallpaperPolicy(ABC):
         """
         return []
 
+    def phase_axes(self) -> tuple[bool, bool]:
+        """
+        Return (use_u, use_v) — which lattice axes affect visual alignment.
+
+        For stripe-based patterns the texture depends only on the V lattice
+        direction, so U-phase mismatch is irrelevant and should be excluded
+        from the metric and the Stage2 solver.  Grid/rotational patterns
+        depend on both axes.
+        """
+        return (True, True)
+
 
 class StripesPolicy(WallpaperPolicy):
     """
@@ -55,6 +66,9 @@ class StripesPolicy(WallpaperPolicy):
     """
     def seam_compatible(self, rho_i: int, rho_j: int) -> bool:
         return (rho_i % 2) == (rho_j % 2)
+
+    def phase_axes(self) -> tuple[bool, bool]:
+        return (False, True)  # stripes depend only on V
 
 
 class DiagonalStripesPolicy(StripesPolicy):

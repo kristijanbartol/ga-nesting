@@ -1,7 +1,7 @@
 # stage2_global_align.py
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Optional, Iterable, Set
+from typing import Dict, List, Tuple, Optional, Iterable, Set, Any
 import os
 import numpy as np
 
@@ -94,6 +94,7 @@ def _residuals_for_component(
     kappas_by_id: Dict[int, int],
     K: int,
     transforms: Dict[int, Rigid2D],
+    phase_axes: Optional[Tuple[bool, bool]] = None,
 ) -> np.ndarray:
     comp_set = set(comp)
     chunks: List[np.ndarray] = []
@@ -121,6 +122,7 @@ def _residuals_for_component(
             weight=c.weight,
             transform_i=Ti,
             transform_j=Tj,
+            phase_axes=phase_axes,
         )
         if r.size:
             chunks.append(r)
@@ -156,6 +158,7 @@ def solve_component_global_alignment(
     lm_lambda: float = 1e-2,
     fd_eps: float = 1e-6,
     verbose: bool = False,
+    phase_axes: Optional[Tuple[bool, bool]] = None,
 ) -> Dict[int, Rigid2D]:
     if root is None:
         root = comp[0]
@@ -175,6 +178,7 @@ def solve_component_global_alignment(
             kappas_by_id=kappas_by_id,
             K=K,
             transforms=Ts,
+            phase_axes=phase_axes,
         )
 
     for it in range(max_iters):
@@ -223,6 +227,7 @@ def solve_global_alignment_all_components(
     initial_transforms: Optional[Dict[int, Rigid2D]] = None,
     max_iters: int = 25,
     verbose: bool = False,
+    phase_axes: Optional[Tuple[bool, bool]] = None,
 ) -> Dict[int, Rigid2D]:
     patch_ids = list(patch_ids)
     comps = connected_components(patch_ids, constraints)
@@ -240,6 +245,7 @@ def solve_global_alignment_all_components(
             root=comp[0],
             max_iters=max_iters,
             verbose=verbose,
+            phase_axes=phase_axes,
         )
         out.update(Ts)
     return out

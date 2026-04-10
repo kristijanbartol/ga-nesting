@@ -91,6 +91,18 @@ def load_exported_seamfile(path: str) -> Tuple[int, int, List[Tuple[int, int]]]:
     return patch_i, patch_j, pairs
 
 
+def _axis_columns(phase_axes: Optional[Tuple[bool, bool]]) -> list:
+    """Return column indices for the active phase axes."""
+    if phase_axes is None or (phase_axes[0] and phase_axes[1]):
+        return [0, 1]
+    cols = []
+    if phase_axes[0]:
+        cols.append(0)
+    if phase_axes[1]:
+        cols.append(1)
+    return cols if cols else [0, 1]  # fallback: both
+
+
 def seam_phase_residuals_uv(
     seam_pairs: List[Tuple[int, int]],
     patch_i_vertices_xy: np.ndarray,
@@ -102,11 +114,15 @@ def seam_phase_residuals_uv(
     weight: float,
     transform_i: Optional[Rigid2D] = None,
     transform_j: Optional[Rigid2D] = None,
+    phase_axes: Optional[Tuple[bool, bool]] = None,
 ) -> np.ndarray:
     """
-    Residual vector for least squares:
+    Residual vector for least squares.
+
+    With phase_axes=None or (True, True):
       r = sqrt(weight) * [du0, dv0, du1, dv1, ...]
-    where du,dv are signed wrapped phase diffs in [-0.5,0.5).
+    With phase_axes=(False, True) (stripes):
+      r = sqrt(weight) * [dv0, dv1, ...]
 
     weight=0 -> returns empty.
     """
@@ -135,13 +151,15 @@ def seam_phase_residuals_uv(
     phi_i = frac(phi_i + off_i)
     phi_j = frac(phi_j + off_j)
 
-    du = wrap_signed_phase_diff(phi_i[:, 0], phi_j[:, 0])
-    dv = wrap_signed_phase_diff(phi_i[:, 1], phi_j[:, 1])
+    ax = _axis_columns(phase_axes)
+    n_axes = len(ax)
+    N = len(idx_i)
 
-    r = np.empty((2 * len(du),), dtype=float)
-    r[0::2] = du
-    r[1::2] = dv
+    diffs = np.empty((N, n_axes), dtype=float)
+    for col_idx, a in enumerate(ax):
+        diffs[:, col_idx] = wrap_signed_phase_diff(phi_i[:, a], phi_j[:, a])
 
+    r = diffs.ravel()  # [d0_ax0, d0_ax1, d1_ax0, d1_ax1, ...]
     r *= np.sqrt(weight)
     return r
 
@@ -158,6 +176,7 @@ def seam_phase_mismatch(
     transform_i: Optional[Rigid2D] = None,
     transform_j: Optional[Rigid2D] = None,
     glide_transforms=None,
+    phase_axes: Optional[Tuple[bool, bool]] = None,
 ) -> float:
     """
     Spec-compliant seam phase mismatch (f2 contribution for one seam).
@@ -167,13 +186,18 @@ def seam_phase_mismatch(
 
         Delta(phi_a, phi_b) = min(|phi_a - phi_b|, 1 - |phi_a - phi_b|)
 
-    in [0, 0.5].  The per-point mismatch is the mean of the U and V deltas.
+    in [0, 0.5].  The per-point mismatch is the mean of the active axis deltas.
     The seam mismatch is the mean over all pairs (approximating the 1/L integral),
     scaled by weight:
 
-        Mismatch(s) = weight * mean_over_pairs( mean(Delta_u, Delta_v) )
+        Mismatch(s) = weight * mean_over_pairs( mean(Delta_active_axes) )
 
     weight=0 returns 0.0 immediately.
+
+    phase_axes: optional (use_u, use_v) tuple.  When provided, only the
+    active axes contribute to the mismatch.  For stripe patterns (False, True)
+    only the V-phase is used; for grid patterns (True, True) both are used.
+    Default None means (True, True).
 
     glide_transforms: optional list of callables (phi_j -> phi_j') representing
     glide-reflection symmetries of the wallpaper group.  When provided, the
@@ -203,8 +227,11 @@ def seam_phase_mismatch(
     phi_i = frac(phi_i + (kappa_i / float(K)))
     phi_j = frac(phi_j + (kappa_j / float(K)))
 
+    # Select active phase axes
+    ax = _axis_columns(phase_axes)
+
     def _mismatch_pp(pi, pj):
-        diff = np.abs(pi - pj)
+        diff = np.abs(pi[:, ax] - pj[:, ax])
         return np.minimum(diff, 1.0 - diff).mean(axis=1)   # (N,)
 
     # Wrapped absolute difference per axis: Delta in [0, 0.5]
