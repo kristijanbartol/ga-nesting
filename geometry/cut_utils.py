@@ -120,7 +120,7 @@ def assign_patch_labels(patches, garment_part, valid_patch_idxs, ref_point):
     for patch_idx, patch in enumerate(patches):
         if patch_idx in valid_patch_idxs:
             # check whether the patch is part of the sleeve
-            if garment_part == 'upper':
+            if garment_part in ('upper', 'onesie_sleeves'):
                 count_right = (patch.vertices[:, 0] < ref_point_right[0]).sum()
                 is_majority_right = count_right > (len(patch.vertices) / 2)
                 count_left = (patch.vertices[:, 0] > ref_point_left[0]).sum()

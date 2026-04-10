@@ -184,6 +184,32 @@ UPPER_DERIVED_MIDLINE: tuple = (
     ("Hip_Back",  "Hip_L", False),
 )
 
+# Onesie (with or without sleeves) — same Hip midline as lower/upper,
+# plus Neck_Front derived from Neck_L on the front midline.
+ONESIE_MIDLINE_LANDMARKS = {
+    "Neck_Front": LandmarkDefinition(
+        name="Neck_Front",
+        boundary_corners=(0, 0, 0, 0),   # unused — vertex derived at runtime
+        is_derived=True,
+    ),
+    "Hip_Front": LandmarkDefinition(
+        name="Hip_Front",
+        boundary_corners=(0, 0, 0, 0),   # unused — vertex derived at runtime
+        is_derived=True,
+    ),
+    "Hip_Back": LandmarkDefinition(
+        name="Hip_Back",
+        boundary_corners=(0, 0, 0, 0),   # unused — vertex derived at runtime
+        is_derived=True,
+    ),
+}
+
+ONESIE_DERIVED_MIDLINE: tuple = (
+    ("Neck_Front", "Neck_L", True),
+    ("Hip_Front",  "Hip_L",  True),
+    ("Hip_Back",   "Hip_L",  False),
+)
+
 SHIRTLESS_SEAMS = [
     "Side_L",
     "Side_R",
@@ -247,6 +273,10 @@ ONESIE_SEAMS = [
     "Side_Upper_L",
     "Armhole_L",
     "Shoulder_L",
+    "Waist_Hem_Front_R",
+    "Waist_Hem_Front_L",
+    "Waist_Hem_Back_R",
+    "Waist_Hem_Back_L",
 ]
 ONESIE_WITH_SLEEVES_SEAMS = ONESIE_SEAMS + [
     "Sleeve_Upper_R",

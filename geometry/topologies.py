@@ -444,6 +444,31 @@ def build_onesie_topology(landmark_lib):
         importance=0.0
     )
 
+    # 17–20. Waist seams — separate upper body from lower body.
+    # Unlike pants/shirt where these are boundary hems (importance=0),
+    # in the onesie these are inter-patch seams connecting the torso
+    # to the legs, so they carry nonzero importance for texture alignment.
+    seams["Waist_Hem_Front_R"] = SeamDefinition(
+        "Waist_Hem_Front_R", "Hip_R", "Hip_Front",
+        path_type=SeamPathType.GEODESIC,
+        importance=0.8
+    )
+    seams["Waist_Hem_Front_L"] = SeamDefinition(
+        "Waist_Hem_Front_L", "Hip_Front", "Hip_L",
+        path_type=SeamPathType.GEODESIC,
+        importance=0.8
+    )
+    seams["Waist_Hem_Back_R"] = SeamDefinition(
+        "Waist_Hem_Back_R", "Hip_R", "Hip_Back",
+        path_type=SeamPathType.GEODESIC,
+        importance=0.8
+    )
+    seams["Waist_Hem_Back_L"] = SeamDefinition(
+        "Waist_Hem_Back_L", "Hip_Back", "Hip_L",
+        path_type=SeamPathType.GEODESIC,
+        importance=0.8
+    )
+
     return seams
 
 

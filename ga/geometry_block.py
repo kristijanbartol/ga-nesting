@@ -1,6 +1,7 @@
 # ga_geometry_block.py
 import glob
 import multiprocessing
+import sys
 import numpy as np
 import trimesh
 from smplx import SMPL
@@ -10,7 +11,7 @@ import torch
 from spec import LandmarkDefinition, TextureSpec
 from experiment_loader import load_experiment
 from geometry.geometry_utils import LandmarkMapper, generate_symmetric_landmarks, find_midline_vidx
-from geometry.topologies import build_pant_topology, build_sleeveless_shirt_topology
+from geometry.topologies import build_pant_topology, build_sleeveless_shirt_topology, build_onesie_with_sleeves_topology
 from geometry.cut_utils import perform_global_cut, assign_patch_labels
 from geometry.export import export_data
 from geometry.geometry_processor import BatchBuilder
@@ -18,8 +19,10 @@ from geometry.parameterization import parameterize
 from geometry.landmarks import (
     CORE_LANDMARKS, LONG_LANDMARKS, SHOULDER_KPT_IDX, HIP_KPT_IDX,
     PANT_SEAMS, SHIRTLESS_SEAMS,
+    ONESIE_LANDMARKS, ONESIE_LONG_LANDMARKS, ONESIE_WITH_SLEEVES_SEAMS,
     LOWER_MIDLINE_LANDMARKS, LOWER_DERIVED_MIDLINE,
     UPPER_MIDLINE_LANDMARKS, UPPER_DERIVED_MIDLINE,
+    ONESIE_MIDLINE_LANDMARKS, ONESIE_DERIVED_MIDLINE,
 )
 
 
@@ -41,6 +44,19 @@ _GARMENT_CONFIGS = {
         # Hip_Front / Hip_Back are midline landmarks derived from Hip_L at runtime.
         "derived_landmarks": UPPER_MIDLINE_LANDMARKS,
         "derived_lm_specs":  UPPER_DERIVED_MIDLINE,
+    },
+    "onesie_sleeves": {
+        # Onesie landmarks (minus midline entries) + sleeve landmarks.
+        # Neck_Front, Hip_Front, Hip_Back are midline — handled as derived below.
+        "landmark_fn": lambda: {
+            **{k: v for k, v in ONESIE_LANDMARKS.items()
+               if k not in ("Neck_Front", "Hip_Front", "Hip_Back")},
+            **ONESIE_LONG_LANDMARKS,
+        },
+        "topology":    build_onesie_with_sleeves_topology,
+        "active_seams": ONESIE_WITH_SLEEVES_SEAMS,
+        "derived_landmarks": ONESIE_MIDLINE_LANDMARKS,
+        "derived_lm_specs":  ONESIE_DERIVED_MIDLINE,
     },
 }
 
@@ -160,7 +176,8 @@ def _geometry_worker(instance, mesh_V, mesh_F, delta_uv, garment_part, result_qu
 
 
 def run_geometry_blackbox_timeout(instance, mesh, delta_uv: np.ndarray,
-                                   garment_part: str = "upper", timeout: int = 5):
+                                   garment_part: str = "upper",
+                                   timeout: int = 15 if sys.platform == "darwin" else 10):
     """
     Run run_geometry_blackbox in a forked subprocess with a hard wall-clock timeout.
 
@@ -168,6 +185,10 @@ def run_geometry_blackbox_timeout(instance, mesh, delta_uv: np.ndarray,
     indefinitely on degenerate mesh configurations.  Python-level timeouts
     (signal.alarm, Thread) cannot interrupt native C++ code that holds the GIL;
     only os.kill can.
+
+    macOS uses a higher default (15s) because the forked-subprocess overhead
+    and slower single-thread performance make 10s too tight for complex
+    garments (onesie: 26 seams, ~9s pipeline).
     """
     # 'fork' inherits the parent's sys.path and loaded modules, avoiding the
     # re-import overhead and path issues that come with 'spawn' on macOS.
