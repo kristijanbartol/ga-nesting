@@ -1,6 +1,9 @@
 import sys
+import os
 
-sys.path.append('/home/kristijan/LOOM/potpourri3d/src')
+# Vendored potpourri3d with ExtendedEdgeFlipGeodesicSolver.
+# Resolve relative to this file so it works on both Linux and macOS.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'potpourri3d', 'src'))
 
 from typing import Dict
 import numpy as np
