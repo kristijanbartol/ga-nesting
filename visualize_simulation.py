@@ -118,6 +118,29 @@ def texture_colors(uv_mm: np.ndarray,
     return np.outer(t, color_a) + np.outer(1.0 - t, color_b)
 
 
+def render_tile_image(period_u_mm: float,
+                      period_v_mm: float,
+                      wallpaper_group: str,
+                      resolution: int = 1024,
+                      color_a: np.ndarray = COLOR_A,
+                      color_b: np.ndarray = COLOR_B) -> np.ndarray:
+    """Render one period of the wallpaper pattern as an (H, W, 3) float32 image.
+
+    The image covers UV in [0, period_u) x [0, period_v) and tiles seamlessly.
+    Row 0 is the top of the image (v = period_v), matching Polyscope's
+    ``image_origin='upper_left'`` convention.
+    """
+    u = np.linspace(0, period_u_mm, resolution, endpoint=False)
+    v = np.linspace(0, period_v_mm, resolution, endpoint=False)
+    uu, vv = np.meshgrid(u, v)
+    uv_grid = np.stack([uu.ravel(), vv.ravel()], axis=1)
+
+    t = _texture_value(uv_grid, period_u_mm, period_v_mm, wallpaper_group)
+    rgb = np.outer(t, color_a) + np.outer(1.0 - t, color_b)
+    img = rgb.reshape(resolution, resolution, 3).astype(np.float32)
+    return img[::-1]  # flip rows: row 0 = top (high v)
+
+
 def _load_2d_pattern(param_dir: str, back_labels: str):
     """Load subdivided 2D sewing pattern in the same order as the simulation."""
     import trimesh
@@ -250,49 +273,100 @@ def show_best_nesting(json_path: str = "results/pattern/best/best_individual.jso
     )
 
 
+def _fix_wrapping_corners(uv_per_vertex: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """Build per-corner UVs with period-boundary wrapping fixed.
+
+    For each face, if any pair of corner UVs differs by more than 0.5 in
+    either axis, shift the smaller values up by 1.0 so that linear
+    interpolation across the triangle stays local instead of sweeping
+    through the entire tile.
+
+    Returns (F*3, 2) corner UV array in the order Polyscope expects.
+    """
+    # Gather per-corner UVs: (F, 3, 2)
+    corner_uv = uv_per_vertex[faces]
+
+    for axis in range(2):
+        col = corner_uv[:, :, axis]             # (F, 3)
+        lo = col.min(axis=1, keepdims=True)      # (F, 1)
+        hi = col.max(axis=1, keepdims=True)
+        wrap_mask = (hi - lo) > 0.5              # (F, 1)  faces that wrap
+        # Shift corners that are in the lower half across the boundary
+        shift = wrap_mask & (col < 0.5)          # (F, 3)
+        corner_uv[:, :, axis] += shift.astype(float)
+
+    return corner_uv.reshape(-1, 2)              # (F*3, 2)
+
+
 def visualize(ply_path: str = PLY_PATH,
               period_u_mm: float = PERIOD_U_MM,
               period_v_mm: float = PERIOD_V_MM,
-              wallpaper_group: str = WALLPAPER_GROUP):
-    """3D Polyscope render of the simulated garment with texture."""
+              wallpaper_group: str = WALLPAPER_GROUP,
+              tex_resolution: int = 1024):
+    """3D Polyscope render of the simulated garment with texture-mapped wallpaper."""
     vertices, faces, uv_mm = load_ply_with_uv(ply_path)
 
     print(f"Loaded '{ply_path}': {len(vertices)} vertices, {len(faces)} faces")
     print(f"UV range — s: [{uv_mm[:, 0].min():.1f}, {uv_mm[:, 0].max():.1f}] mm  "
           f"t: [{uv_mm[:, 1].min():.1f}, {uv_mm[:, 1].max():.1f}] mm")
 
-    colors = texture_colors(uv_mm, period_u_mm, period_v_mm, wallpaper_group)
+    # Normalize UV to [0,1) within one tile
+    uv_norm = np.stack([
+        (uv_mm[:, 0] % period_u_mm) / period_u_mm,
+        (uv_mm[:, 1] % period_v_mm) / period_v_mm,
+    ], axis=1)
+
+    # Build per-corner UVs with wrapping fixed at period boundaries
+    corner_uv = _fix_wrapping_corners(uv_norm, faces)
+
+    tile_img = render_tile_image(period_u_mm, period_v_mm, wallpaper_group,
+                                 resolution=tex_resolution)
 
     ps.init()
     ps_mesh = ps.register_surface_mesh("garment", vertices, faces, smooth_shade=True)
-    ps_mesh.add_color_quantity("texture", colors, defined_on='vertices', enabled=True)
+    ps_mesh.add_parameterization_quantity("uv", corner_uv, defined_on='corners',
+                                          enabled=False)
+    ps_mesh.add_color_quantity("texture", tile_img,
+                               defined_on='texture', param_name='uv',
+                               enabled=True)
     ps.show()
 
 
 def parse_args():
     import argparse
     p = argparse.ArgumentParser(description="Visualize simulated garment texture.")
-    p.add_argument("--garment", default="upper", choices=["upper", "lower"],
-                   help="Garment type; sets default paths for PLY, param dir, and back labels (default: upper)")
+    p.add_argument("--garment", default="upper",
+                   help="Garment type (default: upper)")
+    p.add_argument("--baseline", default=None, choices=["b0", "b1", "b2"],
+                   help="Visualize a baseline result instead of the GA (loads from results/simulation/<garment>/<baseline>/)")
     p.add_argument("--wallpaper", default=WALLPAPER_GROUP, choices=["stripes", "diagonal_stripes", "grid", "p4", "p4m", "pg", "pmg", "pgg"],
                    help="Texture wallpaper group (default: stripes)")
     p.add_argument("--ply", default=None,
-                   help="Path to simulated garment PLY (default: results/simulation/<garment>/cloth_00000.ply)")
+                   help="Path to simulated garment PLY (default: auto from --garment/--baseline)")
     p.add_argument("--json", default="results/pattern/best/best_individual.json",
                    help="Path to best_individual.json (default: %(default)s)")
     p.add_argument("--period", type=float, default=PERIOD_U_MM,
                    help="Texture period in mm, applied to both U and V (default: %(default)s)")
+    p.add_argument("--tex-resolution", type=int, default=1024,
+                   help="Texture tile resolution in pixels (default: 1024)")
     return p.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
     g = args.garment
-    ply_path   = args.ply or f"results/simulation/{g}/cloth_00000.ply"
-    param_dir  = f"results/pattern/best/{g}"
-    back_labels = f"data/labels/{g}/back.txt"
 
-    show_best_nesting(json_path=args.json)                                 # 1) reference nesting layout
+    if args.baseline:
+        ply_path    = args.ply or f"results/simulation/{g}/{args.baseline}/cloth_00000.ply"
+        param_dir   = f"results/pattern/latest/{g}"
+        back_labels = f"data/labels/{g}/back.txt"
+    else:
+        ply_path    = args.ply or f"results/simulation/{g}/cloth_00000.ply"
+        param_dir   = f"results/pattern/best/{g}"
+        back_labels = f"data/labels/{g}/back.txt"
+
+    if not args.baseline:
+        show_best_nesting(json_path=args.json)                             # 1) reference nesting layout (GA only)
     debug_uv_2d(ply_path=ply_path,
                 param_dir=param_dir,
                 back_labels=back_labels,
@@ -300,4 +374,5 @@ if __name__ == "__main__":
                 wallpaper_group=args.wallpaper)                            # 2) UV debug: 2D pattern colored by PLY UV
     visualize(ply_path=ply_path,
               period_u_mm=args.period, period_v_mm=args.period,
-              wallpaper_group=args.wallpaper)                              # 3) 3D Polyscope render
+              wallpaper_group=args.wallpaper,
+              tex_resolution=args.tex_resolution)                          # 3) 3D Polyscope render
