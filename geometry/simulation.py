@@ -145,7 +145,8 @@ class Example:
                  tsol=None, kappas_by_id=None, K=None,
                  period_u_mm=None, period_v_mm=None,
                  pattern_root='results/pattern/latest',
-                 patches_dir='data/patches/upper'):
+                 patches_dir='data/patches/upper',
+                 out_dir=None):
         # setup simulation parameters first
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
@@ -194,7 +195,7 @@ class Example:
         self.unmerged_to_merged = np.array([unmerged_to_merged_dict[i] for i in range(N_unmerged)], dtype=np.int32)
         self.save_every = 10
         self.frame_idx = 0
-        self.out_dir = Path(f"./results/simulation/{garment_type}/")
+        self.out_dir = Path(out_dir) if out_dir else Path(f"./results/simulation/{garment_type}/")
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
         #garment_mesh_3d.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 3, [0, 1, 0]))
@@ -417,13 +418,15 @@ def run_headless_simulation(avatar, garment_type, is_adapt=False,
                              tsol=None, kappas_by_id=None, K=None,
                              period_u_mm=None, period_v_mm=None,
                              pattern_root='results/pattern/latest',
-                             patches_dir='data/patches/upper'):
+                             patches_dir='data/patches/upper',
+                             out_dir=None):
     viewer = HeadlessViewer()
     example = Example(viewer, avatar, garment_type, is_adapt,
                       tsol=tsol, kappas_by_id=kappas_by_id, K=K,
                       period_u_mm=period_u_mm, period_v_mm=period_v_mm,
                       pattern_root=pattern_root,
-                      patches_dir=patches_dir)
+                      patches_dir=patches_dir,
+                      out_dir=out_dir)
 
     # run headless for some number of frames
     num_frames = 60  # 1 secons @ 60 fps
