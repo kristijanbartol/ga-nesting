@@ -84,6 +84,9 @@ def parse_args():
                    help="Lower bound for delta sampling and mutation (default: 0.2)")
     p.add_argument("--delta_hi", type=float, default=0.8,
                    help="Upper bound for delta sampling and mutation (default: 0.8)")
+    p.add_argument("--tag", type=str, default=None,
+                   help="Experiment tag — creates a separate results subdirectory "
+                        "(e.g. --tag v2 writes to results/experiments/<garment>_v2/)")
     return p.parse_args()
 
 
@@ -156,7 +159,8 @@ def _init_body_run(num_bodies: int, args) -> dict:
     Creates the output directory and runs baselines if starting fresh.
     Returns a state dict used by _run_one_seed().
     """
-    bodies_base = os.path.join("results", "experiments", args.garment, f"bodies_{num_bodies}")
+    exp_name = f"{args.garment}_{args.tag}" if args.tag else args.garment
+    bodies_base = os.path.join("results", "experiments", exp_name, f"bodies_{num_bodies}")
     latest      = _find_latest_run_dir(bodies_base)
 
     if latest is not None:
@@ -313,6 +317,7 @@ def _init_body_run(num_bodies: int, args) -> dict:
         "sigma_delta":  args.sigma_delta,
         "delta_lo":     args.delta_lo,
         "delta_hi":     args.delta_hi,
+        "self_adapt":   args.self_adapt,
         "out_dir":      out_dir,
         "results_path": results_path,
         "conv_path":    conv_path,
