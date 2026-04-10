@@ -83,10 +83,10 @@
             "program": "${workspaceFolder}/run_ga.py",
             "args": [
                 "--garment", "lower",
-                "--wallpaper", "stripes",
-                "--pop", "10",
-                "--gens", "1",
-                "--num_bodies", "1",
+                "--wallpaper", "grid",
+                "--pop", "100",
+                "--gens", "10",
+                "--num_bodies", "50",
                 "--seed", "0",
                 "--w1", "1.0",
                 "--w2", "10.0",
@@ -128,14 +128,17 @@
             "request": "launch",
             "program": "${workspaceFolder}/run_experiments.py",
             "args": [
-                "--garment", "lower",
+                "--garment", "onesie_sleeves",
                 "--wallpaper", "stripes",
                 "--num_bodies", "5", "10", "25", "50", "100",
                 "--runs", "20",
-                "--pop", "50",
-                "--gens", "10",
+                "--pop", "100",
+                "--gens", "20",
                 "--w1", "1.0",
-                "--w2", "10.0"
+                "--w2", "10.0",
+                "--p_kappa", "0.15",
+                "--delta_lo", "0.1",
+                "--delta_hi", "0.9"
                 // Auto-resumes on re-run — no --resume flag needed.
             ],
             "cwd": "${workspaceFolder}",
@@ -150,18 +153,12 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/run_baseline_b0.py",
-            "cwd": "${workspaceFolder}",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
-            },
-            "console": "integratedTerminal"
-        },
-
-        {
-            "name": "Baseline 2",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/run_baseline_b2.py",
+            "args": [
+                "--simulate",
+                "--garment-type", "lower",
+                "--num-bodies", "50",
+                "--wallpaper", "grid"
+            ],
             "cwd": "${workspaceFolder}",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
@@ -174,6 +171,28 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/run_baseline_b1.py",
+            "args": [
+                "--simulate",
+                "--garment-type", "lower",
+                "--num-bodies", "50",
+                "--wallpaper", "grid"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
+            },
+            "console": "integratedTerminal"
+        },
+
+        {
+            "name": "Baseline 2",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/run_baseline_b2.py",
+            "args": [
+                "--simulate",
+                "--garment-type", "upper"
+            ],
             "cwd": "${workspaceFolder}",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
@@ -188,7 +207,8 @@
             "program": "${workspaceFolder}/visualize_simulation.py",
             "args": [
                 "--garment", "lower",
-                "--wallpaper", "stripes",
+                "--baseline", "b0",
+                "--wallpaper", "grid",
                 "--period", "50.0"
             ],
             "cwd": "${workspaceFolder}",
@@ -203,6 +223,52 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/debug_landmarks.py",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
+            },
+            "console": "integratedTerminal"
+        },
+
+        {
+            "name": "Plot wallpaper figure (paper)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/plot_wallpaper_figure.py",
+            "args": [
+                "--garment", "upper"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
+            },
+            "console": "integratedTerminal"
+        },
+
+        {
+            "name": "Plot convergence (paper)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/plot_convergence.py",
+            "args": [
+                "--num_bodies", "5", "10", "25", "50", "100",
+                "--target_seeds", "20"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
+            },
+            "console": "integratedTerminal"
+        },
+
+        {
+            "name": "Show wallpaper groups 3D (polyscope)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/show_wallpaper_3d.py",
+            "args": [
+                "--garment", "upper"
+            ],
             "cwd": "${workspaceFolder}",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/potpourri3d/src"
