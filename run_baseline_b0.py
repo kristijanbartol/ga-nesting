@@ -172,7 +172,8 @@ def main():
     plot_seam_mismatch(result["constraints"], result["V_centered_by_id"],
                        result["lattice"], result["kappas_by_id"], K,
                        result["transforms"], title="B0 — Seam Phase Mismatch",
-                       phase_axes=policy.phase_axes())
+                       phase_axes=policy.phase_axes(),
+                       save_path=f"results/graphs/{garment_type}/b0_seam_mismatch.png")
 
     if args.simulate:
         from geometry.simulation import run_headless_simulation

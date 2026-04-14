@@ -1,4 +1,5 @@
 import math
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -344,7 +345,7 @@ def visualize_population(pop, texture_spec, title=None, max_cols=6):
 
 
 def plot_seam_mismatch(constraints, V_full_by_id, lattice, kappas_by_id, K, transforms, title,
-                       phase_axes=None):
+                       phase_axes=None, save_path=None):
     """
     For each seam constraint, plot the per-point phase mismatch along the seam.
     X axis: point index along seam. Y axis: Delta(phi_i, phi_j) in [0, 0.5].
@@ -409,4 +410,10 @@ def plot_seam_mismatch(constraints, V_full_by_id, lattice, kappas_by_id, K, tran
         ax.legend(fontsize=8)
 
     plt.tight_layout()
-    plt.show()
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"[plot] Saved seam mismatch graph to {save_path}")
+        plt.close(fig)
+    else:
+        plt.show()
