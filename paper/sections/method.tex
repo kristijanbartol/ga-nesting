@@ -249,8 +249,13 @@ and positive otherwise.
 \label{sec:ea}
 
 The genotype mixes continuous ($\boldsymbol{\delta}$), discrete
-($\boldsymbol{\kappa}$, $\boldsymbol{\rho}$), and combinatorial variables,
-requiring variable-specific operators in the MIES
+($\boldsymbol{\kappa}$, $\boldsymbol{\rho}$), and combinatorial variables.
+The geometry-flattening pipeline driven by $\boldsymbol{\delta}$ exposes
+no gradient to the outer loop, and $\boldsymbol{\kappa}$ is combinatorial
+with up to $K^M \approx 8.6 \times 10^9$ candidates for our largest
+garment, ruling out both gradient-based and exhaustive search.
+We therefore adopt a population-based evolution strategy with
+variable-specific operators in the MIES
 tradition~\cite{LiEEBSDR13}.
 
 \paragraph{Selection.}
@@ -302,6 +307,8 @@ Second, the Stage~2 Levenberg--Marquardt solver absorbs much of the local
 phase-correction signal, so that $\boldsymbol{\kappa}$ mutations contribute
 mainly when they shift patches into qualitatively different phase
 relationships that Stage~2 alone cannot reach.
-The effective search is therefore dominated by $\boldsymbol{\delta}$
-mutations that discover seam placements where the LSCM flattening produces
-inherently better-aligned patch boundaries.
+The GA's advantage over baselines that fix $\boldsymbol{\delta} = 0.5$
+therefore comes primarily from $\boldsymbol{\delta}$ mutations that
+discover seam placements where the LSCM flattening produces inherently
+better-aligned patch boundaries, a region of the search space no
+baseline can reach.

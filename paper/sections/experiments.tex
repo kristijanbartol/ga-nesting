@@ -58,11 +58,15 @@ repeated with 20 independent random seeds; we report mean $\pm$ standard
 deviation.
 Each fitness evaluation takes approximately 5\,s on a single CPU core
 (geometry: ${\sim}$4.5\,s, Stage~2: ${\sim}$0.1\,s, nesting: $<$0.01\,s),
-so a full GA run (100 $\times$ 20 = 2{,}000 evaluations) completes in
-approximately 3 hours.
-For comparison, B2 on the onesie evaluates $5 \times 10^5$ phase
-assignments in similar time but searches only
-$\boldsymbol{\kappa}$, not $\boldsymbol{\delta}$.
+so a full GA run of 2{,}000 evaluations completes in approximately
+3 hours.
+B2 on the onesie runs its geometry pipeline once and then scores
+$5 \times 10^5$ $\boldsymbol{\kappa}$ assignments at fixed
+$\boldsymbol{\delta} = 0.5$, inspecting 250$\times$ more configurations
+than the GA in a strictly smaller subspace; the GA nonetheless
+dominates B2 on $f_\text{align}$ (Section~\ref{sec:results}),
+justifying the cost of population-based search over the full joint
+space.
 
 % ---------------------------------------------------------------------------
 \subsection{Garment Types}
@@ -90,19 +94,23 @@ isolating the contribution of seam position optimisation
 Table~\ref{tab:results_onesie} reports results for the onesie garment
 (primary evaluation) and Table~\ref{tab:results_lower} for pants
 (secondary, with exact B2).
-The GA consistently reduces $f_\text{align}$ relative to all baselines while
-maintaining comparable $f_\text{fabric}$, confirming that improved texture
-alignment does not come at the cost of material waste.
-The fit guard $f_\text{fit}$ is near zero across runs, confirming
-that the penalty (weighted at $w_\text{fit} = 10$) effectively prevents
-garment shrinkage without requiring manual tuning of seam bounds.
-On the onesie, where B2 can only sample a tiny fraction of the $8^{11}$
-phase space, the GA's joint optimisation of $\boldsymbol{\delta}$ and
-$\boldsymbol{\kappa}$ explores regions of the search space that no
-baseline can access.
-On pants, where B2 is exact, the GA still improves $f_\text{align}$,
-isolating the contribution of seam position optimisation.
-% TODO: fill quantitative improvement percentages once 20 seeds complete
+The GA reduces $f_\text{align}$ relative to every baseline at every
+body count, at a small cost in $f_\text{fabric}$ of a few percent
+relative to the strongest baselines, as encoded by the fitness weights
+$w_\text{fabric} = 1$, $w_\text{align} = 2.5$.
+The fit guard $f_\text{fit}$ is zero on the majority of runs and remains
+a small fraction of baseline patch area in the remainder$^\dagger$, so the
+reported $f_\text{align}$ gains cannot be attributed to garment shrinkage.
+B2 on pants is exact over $8^4$ phase assignments, and B2 on the onesie
+is the best of $5 \times 10^5$ uniform random samples from $8^{11}$,
+the tightest $\boldsymbol{\kappa}$-only baseline we can afford at the
+GA's evaluation budget.
+Both B2 instances fix $\boldsymbol{\delta} = 0.5$, so the GA's improvement
+over B2 is attributable to $\boldsymbol{\delta}$ optimisation, which no
+baseline performs; this is the effect the evolutionary search is designed
+to exploit, and is what justifies its cost relative to
+$\boldsymbol{\kappa}$-only alternatives.
+% TODO: fill quantitative improvement percentages and precise f_fit bound once 20 seeds complete
 
 \begin{table}[t]
 \centering
