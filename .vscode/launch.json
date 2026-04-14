@@ -82,10 +82,10 @@
             "request": "launch",
             "program": "${workspaceFolder}/run_ga.py",
             "args": [
-                "--garment", "lower",
+                "--garment", "onesie_sleeves",
                 "--wallpaper", "grid",
-                "--pop", "100",
-                "--gens", "10",
+                "--pop", "200",
+                "--gens", "20",
                 "--num_bodies", "50",
                 "--seed", "0",
                 "--w1", "1.0",
@@ -155,7 +155,7 @@
             "program": "${workspaceFolder}/run_baseline_b0.py",
             "args": [
                 "--simulate",
-                "--garment-type", "lower",
+                "--garment-type", "onesie_sleeves",
                 "--num-bodies", "50",
                 "--wallpaper", "grid"
             ],
@@ -173,7 +173,7 @@
             "program": "${workspaceFolder}/run_baseline_b1.py",
             "args": [
                 "--simulate",
-                "--garment-type", "lower",
+                "--garment-type", "onesie_sleeves",
                 "--num-bodies", "50",
                 "--wallpaper", "grid"
             ],
@@ -191,7 +191,9 @@
             "program": "${workspaceFolder}/run_baseline_b2.py",
             "args": [
                 "--simulate",
-                "--garment-type", "upper"
+                "--garment-type", "onesie_sleeves",
+                "--num-bodies", "50",
+                "--wallpaper", "grid"
             ],
             "cwd": "${workspaceFolder}",
             "env": {

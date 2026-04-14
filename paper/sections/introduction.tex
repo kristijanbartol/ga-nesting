@@ -1,39 +1,34 @@
 \section{Introduction}
 \label{sec:introduction}
 
-A major source of fabric waste in the apparel industry is inefficient
-placement of 2D garment panels (\emph{pattern pieces}) on the fabric roll
-prior to cutting.
-The task of arranging these panels to minimise wasted material is known as
-\emph{nesting} and has been extensively studied as a combinatorial
-optimisation problem~\cite{BennellO08}.
-Classical nesting methods and current industry practice
-treat texture as irrelevant: panels are placed purely for compactness,
-with no regard for whether the fabric pattern (stripes, checks, herringbone,
-or other periodic motifs) continues seamlessly across the seams of the
-assembled garment.
+Garments made from patterned fabric require periodic motifs, stripes,
+checks, herringbone, to continue seamlessly across seam lines.
+Achieving this alignment while minimising fabric waste involves two coupled
+subproblems: \emph{nesting} (arranging 2D pattern pieces compactly on the
+fabric roll) and \emph{texture alignment} (matching pattern phase at seams).
+Despite their practical coupling, these problems have only been studied in
+isolation.
+Classical nesting methods~\cite{BennellO08} and current industry practice
+place panels purely for compactness, ignoring texture continuity entirely.
 
-The problem of aligning periodic textures along garment seams has been
-addressed by Wolff et al.~\cite{WolffS19}, who directly deform
-the 2D patch shapes to achieve alignment.
-Their formulation, however, assumes an unbounded fabric supply: roll width and
-material efficiency play no role, so the method is decoupled from the
-practical nesting problem.
-Furthermore, by operating directly on 2D patch geometry, fit changes induced
-by the deformation are implicit and go unmeasured. There is no mechanism
-to bound or quantify how much the modified pattern deviates from the
-originally designed garment.
+Wolff et al.~\cite{WolffS19} address texture alignment by directly
+deforming 2D patch shapes to minimise phase mismatch along seams.
+However, their formulation assumes unbounded fabric and ignores material
+efficiency.
+More fundamentally, deforming flat patches changes the garment's fit
+implicitly: there is no mechanism to measure or bound how much the modified
+pattern deviates from the original design.
 
-We argue that seam placement is more naturally optimised in 3D, on the
-body surface, rather than by deforming flat patches.
-Moving a seam line on the body mesh changes the 2D pattern only as a
-consequence of flattening, keeping the modification grounded in 3D geometry.
-Critically, this makes fit deviation explicit: the difference between
-the flattened and the original 3D surface can be directly measured and
-minimised as part of the optimisation.
-We formalise this into a joint optimisation problem over fabric efficiency,
-seam-aware texture alignment, and fit preservation, objectives that have
-not previously been considered together.
+Our key insight is that seam placement is more naturally controlled on the
+3D body surface than by deforming flat patterns.
+Repositioning a seam line on the body mesh changes the 2D pattern only as a
+consequence of re-flattening, keeping every modification grounded in body
+geometry.
+This makes fit deviation an explicit, measurable quantity that can be
+directly penalised during optimisation.
+We formalise this into a joint optimisation over fabric efficiency,
+seam-aware texture alignment, and fit preservation: three objectives that
+have not previously been considered together.
 
 \paragraph{Contributions.}
 \begin{enumerate}
@@ -42,18 +37,16 @@ not previously been considered together.
           realistic fabric roll constraints, the first method to address
           all three objectives simultaneously.
 
-    \item We propose a 3D-grounded seam optimisation paradigm in which fit
-          deviation is an explicit, measurable objective, in contrast to prior
-          2D patch deformation approaches where fit change is implicit.
+    \item We propose a 3D-grounded seam optimisation in which fit deviation
+          is an explicit, measurable objective, in contrast to prior 2D
+          deformation approaches where fit change is implicit and unbounded.
 
-    \item We support texture alignment across eight wallpaper symmetry
-          groups, including patterns with glide-reflection symmetry such as
+    \item We model texture periodicity via eight wallpaper symmetry groups,
+          including patterns with glide-reflection symmetry such as
           herringbone, chevron, and brick bond.
 
-    \item We analyse the search landscape induced by the mesh-based
-          formulation and evaluate on garments of up to $M=11$ patches
-          with layouts of up to 1{,}100 pattern pieces across 20
-          independent seeds, demonstrating consistent improvement over
-          all baselines.
+    \item We evaluate on garments of up to $M=11$ patches with layouts of
+          up to 1{,}100 pattern pieces across 20 independent seeds,
+          demonstrating consistent improvement over all baselines.
 \end{enumerate}
 

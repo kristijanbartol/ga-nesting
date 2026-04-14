@@ -33,29 +33,28 @@
 \maketitle
 
 \begin{abstract}
-Placing 2D garment panels on a fabric roll efficiently is a well-studied
-combinatorial optimisation problem, yet existing methods ignore whether
-periodic patterns such as stripes or checks align across the seams of the
-assembled garment.
-Prior work on texture alignment assumes an unbounded fabric supply and
-operates by directly deforming 2D patch shapes, leaving fit changes implicit
-and unmeasured.
-We propose a joint optimisation framework that simultaneously minimises
-fabric consumption, seam-wise texture misalignment, and garment fit
-deviation.
-Seam positions are optimised directly on the 3D body mesh, grounding fit
-changes in body geometry so they can be explicitly measured and penalised.
-The periodic structure of the fabric is modelled via wallpaper symmetry
-groups, including patterns with glide-reflection symmetry such as
-herringbone and chevron.
-The mixed search space (continuous seam parameters, discrete phase offsets,
-grain orientations) and intractable combinatorial phase space
-($K^M > 10^9$ for complex garments) necessitate a metaheuristic solver;
-we employ a mixed-integer evolution strategy with variable-specific
-operators.
-Experiments on two garment types with layouts of up to 1{,}100 pattern
-pieces and 20 independent seeds show consistent improvement in texture
-alignment over all baselines without sacrificing fabric efficiency.
+When assembling a garment from patterned fabric, periodic motifs such as
+stripes or checks should continue seamlessly across seam lines, yet
+the two subproblems involved, nesting (minimising fabric waste) and texture
+alignment (matching pattern phase at seams), have only been studied in
+isolation.
+Prior texture-alignment work assumes an unbounded fabric supply and deforms
+2D patch shapes directly, leaving garment fit changes implicit and
+unmeasured.
+We propose the first joint optimisation of fabric efficiency, seam-wise
+texture alignment, and fit preservation.
+Our key idea is to optimise seam positions on the 3D body mesh rather than
+deforming flat patterns: this grounds every modification in body geometry,
+making fit deviation an explicit, measurable objective.
+Texture periodicity is modelled via wallpaper symmetry groups, covering
+eight pattern families including herringbone, chevron, and brick bond.
+We solve the resulting mixed search space (continuous seam parameters,
+discrete phase offsets, grain orientations; up to $K^M > 10^9$
+phase configurations) with a mixed-integer evolution strategy using
+variable-specific operators.
+Experiments on two garment types with up to 1{,}100 pattern pieces and
+20 independent seeds show consistent improvement in texture alignment over
+all baselines without sacrificing fabric efficiency.
 \keywords{garment pattern nesting \and texture alignment \and
 evolutionary algorithm \and wallpaper groups \and seam optimisation}
 \end{abstract}
