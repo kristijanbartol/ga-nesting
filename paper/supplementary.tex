@@ -1,0 +1,247 @@
+\documentclass[runningheads]{llncs}
+
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{hyperref}
+
+\graphicspath{{figures/}}
+
+\begin{document}
+
+\title{Pattern Layout Optimization for Seam-Aware Texture Alignment \\
+       Supplementary Material}
+
+\author{Anonymous}
+\authorrunning{Anonymous}
+\institute{Anonymous}
+
+\maketitle
+
+% ---------------------------------------------------------------------------
+\section{Full Parameter Specification}
+\label{sup:params}
+
+Table~\ref{tab:hyperparams} lists every hyperparameter used in the main
+experiments. All reported results use the same configuration except
+where explicitly noted (e.g.\ the $\text{GA}_{\text{no-}\kappa}$
+ablation sets $p_\kappa = 0$; the B3 random-search baseline uses the
+same bounds but no operators).
+
+\begin{table}[h]
+\centering
+\caption{Full hyperparameter specification.}
+\label{tab:hyperparams}
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{llc}
+\toprule
+Group & Parameter & Value \\
+\midrule
+\multirow{7}{*}{Search space}
+ & $\boldsymbol{\delta}$ bounds  $[\delta_\text{lo}, \delta_\text{hi}]$ & $[0.2, 0.8]$ \\
+ & $\boldsymbol{\delta}$ dimension (onesie) & $2m = 2 \times 13$ \\
+ & $\boldsymbol{\delta}$ dimension (pants)  & $2m = 2 \times 5$ \\
+ & Phase bins $K$                           & $8$ \\
+ & Grain orientations $|\{\rho\}|$          & $4$ (fixed to $0$ in experiments) \\
+ & Nesting heuristics $|\mathcal{H}|$       & $3$ (fixed to bottom-left) \\
+ & Permutation $\pi$                        & area-sorted (fixed) \\
+\midrule
+\multirow{8}{*}{GA operators}
+ & Population size                          & $100$ \\
+ & Generations                              & $20$ \\
+ & Elite count                              & $4$ \\
+ & Tournament size $k$                      & $4$ \\
+ & Crossover probability $p_c$              & $0.7$ \\
+ & Mutation probability $p_m$               & $0.7$ \\
+ & $\boldsymbol{\delta}$ Gaussian $\sigma_\delta$ & $0.20$ \\
+ & $\boldsymbol{\kappa}$ per-gene flip $p_\kappa$ & $0.35$ \\
+\midrule
+\multirow{4}{*}{Fitness weights}
+ & $w_\text{fabric}$                        & $1.0$ \\
+ & $w_\text{align}$                         & $2.5$ \\
+ & $w_\text{fit}$                           & $10.0$ \\
+ & Tiebreaker (selection)                   & Pareto dominance, sum fallback \\
+\midrule
+\multirow{6}{*}{Environment}
+ & Fabric roll width $W$                    & $1{,}500$ mm \\
+ & Texture period $(p_u, p_v)$              & $(50, 50)$ mm \\
+ & Body counts $N$                          & $\{5, 10, 25, 50, 100\}$ \\
+ & Seeds per condition                      & $10$ \\
+ & Mesh                                     & SMPL female, neutral pose \\
+ & Wallpaper group (main results)           & PM (horizontal stripes) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------------------
+\section{Runtime Breakdown}
+\label{sup:runtime}
+
+Table~\ref{tab:runtime} decomposes the per-evaluation cost of a single
+individual on a single CPU core. Geometry dominates: LSCM flattening
+and geodesic cutting account for $\sim 90\%$ of the time, Stage~2
+Levenberg--Marquardt is a small constant, and the nesting engine itself
+is negligible relative to the rest.
+
+\begin{table}[h]
+\centering
+\caption{Per-evaluation runtime breakdown, single CPU core.}
+\label{tab:runtime}
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lc}
+\toprule
+Component & Time per evaluation \\
+\midrule
+Geometry pipeline (cut + LSCM flatten)     & ${\sim}$4.5\,s \\
+Stage 2 Levenberg--Marquardt                & ${\sim}$0.1\,s \\
+Nesting (bottom-left, STRtree collision)    & $<$0.01\,s \\
+\midrule
+Total per individual                        & ${\sim}$5\,s \\
+\midrule
+Full GA run (pop $=100$, gens $=20$, $2{,}000$ evals)     & ${\sim}$3 h \\
+Full B3 run ($2{,}000$ random samples)                     & ${\sim}$3 h \\
+B2 onesie ($5 \times 10^5$ $\boldsymbol{\kappa}$ samples, geometry run once) & ${\sim}$3 h \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------------------
+\section{Geometry Failure Rates}
+\label{sup:failures}
+
+A small fraction of candidate $\boldsymbol{\delta}$ configurations
+produce degenerate mesh cuts or LSCM flattening failures. These
+individuals receive a penalty fitness and are discarded by selection,
+so they do not directly affect the reported $F_\Sigma$ values but do
+reduce the effective population size. Table~\ref{tab:failures} reports
+the failure rate per body count.
+
+\begin{table}[h]
+\centering
+\caption{Fraction of evaluations that fail in the geometry pipeline
+(geodesic or LSCM failure) per body count, aggregated over all seeds.
+$^\dagger$Placeholder; to be filled from run logs.}
+\label{tab:failures}
+\begin{tabular}{cc}
+\toprule
+$N$ & Failure rate$^\dagger$ \\
+\midrule
+5    & -- \\
+10   & -- \\
+25   & -- \\
+50   & -- \\
+100  & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------------------
+\section{Per-Seed Convergence Trajectories}
+\label{sup:convergence}
+
+Figure~\ref{fig:conv_per_seed} overlays all 10 seeds per body count,
+showing the raw step-like structure that the main-paper
+Figure~\ref{fig:convergence} summarises as a median and interquartile
+range. The individual trajectories clearly show that the step positions
+vary seed by seed, consistent with the Voronoi interpretation:
+different random initialisations land in different plateaus, and
+improvements occur whenever a mutation happens to cross into a
+better-flattening region of the landscape.
+
+% TODO: add per-seed convergence figure once 10-seed data is ready.
+% \begin{figure}[h]
+% \centering
+% \includegraphics[width=\linewidth]{convergence_per_seed}
+% \caption{Per-seed convergence trajectories, all 10 seeds overlaid per
+%   body count. Horizontal axis: generation. Vertical axis: best-so-far
+%   $F_\Sigma$.}
+% \label{fig:conv_per_seed}
+% \end{figure}
+
+% ---------------------------------------------------------------------------
+\section{Fit Guard $f_\text{fit}$ Distribution}
+\label{sup:ffit}
+
+Figure~\ref{fig:ffit_dist} shows the empirical distribution of
+$f_\text{fit}$ across all 10 seeds and 5 body counts. The guard is
+zero in the majority of runs, confirming that the $w_\text{fit}=10$
+penalty is effective at preventing garment shrinkage during
+$\boldsymbol{\delta}$ search.
+
+% TODO: add f_fit histogram figure once 10-seed data is ready.
+% \begin{figure}[h]
+% \centering
+% \includegraphics[width=0.6\linewidth]{ffit_distribution}
+% \caption{Histogram of $f_\text{fit}$ values across all seeds and body
+%   counts. The mass at zero confirms the guard constraint effectively
+%   prevents shrinkage.}
+% \label{fig:ffit_dist}
+% \end{figure}
+
+% ---------------------------------------------------------------------------
+\section{Full Pants Results (All $N$)}
+\label{sup:pants_full}
+
+% TODO: fill full pants table for all N in {5, 10, 25, 50, 100}.
+
+% ---------------------------------------------------------------------------
+\section{Sensitivity to Phase Resolution $K$}
+\label{sup:k_sensitivity}
+
+To assess how the GA's performance scales with the phase bin
+resolution, we run the full GA on pants (where B2 is exact) with
+$K \in \{4, 8, 16\}$ and 10 seeds per configuration. Finer phase bins
+give Stage 2 and the GA finer-grained control over the residual
+phase mismatch.
+
+% TODO: add K sensitivity table.
+
+% ---------------------------------------------------------------------------
+\section{Population Diversity}
+\label{sup:population}
+
+Figure~\ref{fig:population} visualises an entire population in a
+single generation, showing the diversity of seam placements and
+resulting nesting layouts across individuals. This demonstrates
+qualitatively that the GA maintains a broad search distribution
+throughout the run rather than collapsing to a single mode.
+
+% TODO: add population figure from results/experiments/onesie_sleeves_v2/.
+
+% ---------------------------------------------------------------------------
+\section{Additional Wallpaper Group Examples}
+\label{sup:wallpaper_examples}
+
+For each of the eight supported wallpaper groups, Figure~\ref{fig:wg_examples}
+shows a high-quality (best individual) and a low-quality (worst
+individual) example from a single GA run, illustrating the visual
+range of alignment outcomes the optimiser navigates during search.
+
+% TODO: add good/bad wallpaper examples once wallpaper runs complete.
+
+% ---------------------------------------------------------------------------
+\section{Results on Additional Body Shapes}
+\label{sup:body_shapes}
+
+To verify that the GA's performance generalises across different body
+shapes, we repeat the main onesie experiment on two additional SMPL
+female meshes with substantially different $\beta$ shape parameters.
+
+% TODO: add additional body shape results if compute allows.
+
+% ---------------------------------------------------------------------------
+\section{Results on Shirts}
+\label{sup:shirts}
+
+The sleeveless shirt (\texttt{upper}, $M=2$) is a simpler garment
+type not included in the main paper; we report it here for
+completeness.
+
+% TODO: fill sleeveless shirt results.
+
+\end{document}

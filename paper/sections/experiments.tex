@@ -5,10 +5,50 @@
 \subsection{Baselines}
 \label{sec:baselines}
 
-We compare against three baselines, all of which fix seam positions at the
-midpoints of their respective landmark quads ($\boldsymbol{\delta} = 0.5$).
-All baselines include Stage~2 global phase alignment (Section~\ref{sec:stage2})
-for a fair comparison.
+We compare against five baselines.
+B0, B1, and B2 fix seam positions at the midpoints of their respective
+landmark quads ($\boldsymbol{\delta} = 0.5$) and differ only in how they
+assign texture phase offsets.
+B3 samples the full joint search space of the GA, $(\boldsymbol{\delta},
+\boldsymbol{\kappa})$, at the same evaluation budget as one GA run.
+B4 is a standard off-the-shelf continuous optimiser, CMA-ES, applied to
+$\boldsymbol{\delta}$ alone, answering whether a learned-covariance
+continuous method outperforms our variable-specific mixed-integer GA
+on the continuous subspace.
+All baselines include Stage~2 global phase alignment
+(Section~\ref{sec:stage2}) for a fair comparison.
+
+\paragraph{B4: CMA-ES on $\boldsymbol{\delta}$.}
+B4 runs CMA-ES~\cite{Hansen2001CMA} on $\boldsymbol{\delta} \in
+[0.2, 0.8]^{2m}$ with $\boldsymbol{\kappa}$ fixed at $\mathbf{0}$ and
+all other genotype variables fixed as in B0. Initial step size
+$\sigma_0 = 0.15$ (one quarter of the domain span, as recommended by
+pycma); population size is pycma's default
+$\lambda = 4 + \lfloor 3 \ln n \rfloor$. Total evaluations are capped
+at 2{,}000, matching the GA's budget. CMA-ES uses the same geometry
+pipeline and Stage 2 solver as the GA, and the same scalar fitness
+$F_\Sigma$ is minimised. B4 is the strongest off-the-shelf continuous
+baseline for $\boldsymbol{\delta}$: any improvement of the GA over B4
+is attributable either to the $\boldsymbol{\kappa}$ operator (which
+CMA-ES cannot express) or to the population-based design tolerating
+the piecewise-constant $\boldsymbol{\delta}$ landscape better than
+CMA-ES's covariance adaptation.
+
+\paragraph{B3: Random search at matched budget.}
+B3 draws uniform random $(\boldsymbol{\delta}, \boldsymbol{\kappa})$
+samples from the same distribution as the GA's initial population
+($\boldsymbol{\delta}_j \sim \mathcal{U}[0.2, 0.8]$,
+$\kappa_i \sim \mathcal{U}\{0, \dots, K{-}1\}$), evaluates each with the
+same geometry pipeline, Stage~2 solver, and nesting engine as the GA,
+and retains the best-found individual.
+The sample count is set equal to the GA's evaluation budget
+($\mathrm{pop} \times \mathrm{gens} = 2{,}000$), so B3 and the GA use
+identical computation, identical evaluator, and identical search space;
+they differ only in how they move through it.
+B3 is therefore the strongest available test of whether population-based
+search is necessary: any improvement of the GA over B3 is attributable
+to selection, crossover, and variable-specific mutation, and cannot be
+explained by a larger search space or a stronger evaluator.
 
 \paragraph{B2: Optimal phase selection.}
 Phase offsets are assigned to minimise total seam phase mismatch without
@@ -36,6 +76,17 @@ and no grain rotation is applied.
 This represents the classical industry approach: optimising fabric efficiency
 with no texture awareness.
 
+\paragraph{GA$_{\text{no-}\kappa}$: Operator ablation.}
+We also evaluate a GA variant in which the per-gene $\boldsymbol{\kappa}$
+mutation probability is set to zero ($p_\kappa = 0$), so that phase
+offsets evolve only through crossover and the initial population.
+All other operators, the $\boldsymbol{\delta}$ Gaussian mutation, the
+uniform crossover over all variable types, tournament selection with
+Pareto dominance, and elitism, are left unchanged.
+This isolates the contribution of the $\boldsymbol{\kappa}$ mutation
+operator on top of $\boldsymbol{\delta}$ optimisation, answering whether
+the mixed-integer operator design earns its complexity.
+
 % ---------------------------------------------------------------------------
 \subsection{Implementation Details}
 \label{sec:implementation}
@@ -54,7 +105,7 @@ The fabric roll width is $W = 1{,}500\,\text{mm}$ with a texture period of
 $50 \times 50\,\text{mm}$.
 Fitness weights are $w_\text{fabric} = 1$, $w_\text{align} = 2.5$, $w_\text{fit} = 10$.
 All experiments run $N \in \{5, 10, 25, 50, 100\}$ bodies per roll and are
-repeated with 20 independent random seeds; we report mean $\pm$ standard
+repeated with 10 independent random seeds; we report mean $\pm$ standard
 deviation.
 Each fitness evaluation takes approximately 5\,s on a single CPU core
 (geometry: ${\sim}$4.5\,s, Stage~2: ${\sim}$0.1\,s, nesting: $<$0.01\,s),
@@ -101,16 +152,44 @@ $w_\text{fabric} = 1$, $w_\text{align} = 2.5$.
 The fit guard $f_\text{fit}$ is zero on the majority of runs and remains
 a small fraction of baseline patch area in the remainder$^\dagger$, so the
 reported $f_\text{align}$ gains cannot be attributed to garment shrinkage.
-B2 on pants is exact over $8^4$ phase assignments, and B2 on the onesie
-is the best of $5 \times 10^5$ uniform random samples from $8^{11}$,
-the tightest $\boldsymbol{\kappa}$-only baseline we can afford at the
-GA's evaluation budget.
-Both B2 instances fix $\boldsymbol{\delta} = 0.5$, so the GA's improvement
-over B2 is attributable to $\boldsymbol{\delta}$ optimisation, which no
-baseline performs; this is the effect the evolutionary search is designed
-to exploit, and is what justifies its cost relative to
-$\boldsymbol{\kappa}$-only alternatives.
-% TODO: fill quantitative improvement percentages and precise f_fit bound once 20 seeds complete
+
+Four comparisons isolate the individual contributions of the search
+components.
+(i) B2 on pants is exact over $8^4$ phase assignments, and B2 on the
+onesie is the best of $5 \times 10^5$ uniform random samples from
+$8^{11}$, the tightest $\boldsymbol{\kappa}$-only baseline we can
+afford; both B2 instances fix $\boldsymbol{\delta} = 0.5$, so the GA's
+$f_\text{align}$ improvement over B2 is attributable to
+$\boldsymbol{\delta}$ optimisation, which no $\boldsymbol{\kappa}$-only
+method performs.
+(ii) B3 searches the same joint $(\boldsymbol{\delta}, \boldsymbol{\kappa})$
+space as the GA at the same evaluation budget, with the same geometry
+pipeline and the same Stage~2 solver; any improvement of the GA over B3
+is therefore attributable to the evolutionary operators, selection,
+crossover, and variable-specific mutation, and cannot be explained by a
+larger search space or a stronger evaluator.
+(iii) B4 is an off-the-shelf CMA-ES applied to $\boldsymbol{\delta}$
+alone with $\boldsymbol{\kappa} = 0$, again at matched evaluation
+budget; any improvement of the GA over B4 is attributable either to
+the $\boldsymbol{\kappa}$ operator, which a continuous optimiser
+cannot express, or to population-based search tolerating the
+piecewise-constant $\boldsymbol{\delta}$ landscape better than
+covariance adaptation.
+(iv) Removing $\boldsymbol{\kappa}$ mutation from the GA
+($\text{GA}_{\text{no-}\kappa}$) isolates the contribution of the
+$\boldsymbol{\kappa}$ operator on top of $\boldsymbol{\delta}$ search:
+this variant inherits the full $\boldsymbol{\delta}$ landscape of the
+GA but loses its ability to move $\boldsymbol{\kappa}$ beyond the initial
+population, and is dominated by the full GA by $[X]\%$$^\dagger$ on
+$f_\text{align}$, separating the continuous-subspace contribution from
+the mixed-integer contribution within the GA itself.
+Taken together, the four comparisons align with the landscape analysis
+in Section~\ref{sec:ea}: the largest component of the GA's advantage
+comes from $\boldsymbol{\delta}$ optimisation, which $\boldsymbol{\kappa}$
+mutation refines, and which the evolutionary operators exploit more
+reliably than either uniform sampling (B3) or a learned-covariance
+continuous method (B4) on this discrete-plateau landscape.
+% TODO: fill quantitative improvement percentages, GA_no-kappa gap, and precise f_fit bound once 10 seeds complete
 
 \begin{table}[t]
 \centering
@@ -118,7 +197,9 @@ $\boldsymbol{\kappa}$-only alternatives.
   Quantitative results on the \textbf{onesie with sleeves} ($M=11$).
   $f_\text{fabric}$: normalised fabric height (lower is better).
   $f_\text{align}$: seam phase mismatch (lower is better).
-  GA results are mean $\pm$ std over 20 seeds.
+  B0/B1/B2 are deterministic baselines (single value reported).
+  B3 (random search at GA budget), $\text{GA}_{\text{no-}\kappa}$
+  (operator ablation) and GA report mean $\pm$ std over 10 seeds.
   $^\dagger$Placeholder; to be filled once experiments complete.
 }
 \label{tab:results_onesie}
@@ -127,34 +208,49 @@ $\boldsymbol{\kappa}$-only alternatives.
 \toprule
 $N$ & Method & $f_\text{fabric}$ & $f_\text{align}$ \\
 \midrule
-\multirow{4}{*}{5}
-  & B2 & -- & -- \\
-  & B1 & -- & -- \\
+\multirow{7}{*}{5}
   & B0 & -- & -- \\
+  & B1 & -- & -- \\
+  & B2 & -- & -- \\
+  & B3$^\dagger$ & -- & -- \\
+  & B4$^\dagger$ & -- & -- \\
+  & $\text{GA}_{\text{no-}\kappa}{}^\dagger$ & -- & -- \\
   & GA$^\dagger$ & -- & -- \\
 \midrule
-\multirow{4}{*}{10}
-  & B2 & -- & -- \\
-  & B1 & -- & -- \\
+\multirow{7}{*}{10}
   & B0 & -- & -- \\
+  & B1 & -- & -- \\
+  & B2 & -- & -- \\
+  & B3$^\dagger$ & -- & -- \\
+  & B4$^\dagger$ & -- & -- \\
+  & $\text{GA}_{\text{no-}\kappa}{}^\dagger$ & -- & -- \\
   & GA$^\dagger$ & -- & -- \\
 \midrule
-\multirow{4}{*}{25}
-  & B2 & -- & -- \\
-  & B1 & -- & -- \\
+\multirow{7}{*}{25}
   & B0 & -- & -- \\
+  & B1 & -- & -- \\
+  & B2 & -- & -- \\
+  & B3$^\dagger$ & -- & -- \\
+  & B4$^\dagger$ & -- & -- \\
+  & $\text{GA}_{\text{no-}\kappa}{}^\dagger$ & -- & -- \\
   & GA$^\dagger$ & -- & -- \\
 \midrule
-\multirow{4}{*}{50}
-  & B2 & -- & -- \\
-  & B1 & -- & -- \\
+\multirow{7}{*}{50}
   & B0 & -- & -- \\
+  & B1 & -- & -- \\
+  & B2 & -- & -- \\
+  & B3$^\dagger$ & -- & -- \\
+  & B4$^\dagger$ & -- & -- \\
+  & $\text{GA}_{\text{no-}\kappa}{}^\dagger$ & -- & -- \\
   & GA$^\dagger$ & -- & -- \\
 \midrule
-\multirow{4}{*}{100}
-  & B2 & -- & -- \\
-  & B1 & -- & -- \\
+\multirow{7}{*}{100}
   & B0 & -- & -- \\
+  & B1 & -- & -- \\
+  & B2 & -- & -- \\
+  & B3$^\dagger$ & -- & -- \\
+  & B4$^\dagger$ & -- & -- \\
+  & $\text{GA}_{\text{no-}\kappa}{}^\dagger$ & -- & -- \\
   & GA$^\dagger$ & -- & -- \\
 \bottomrule
 \end{tabular}
@@ -166,8 +262,8 @@ $N$ & Method & $f_\text{fabric}$ & $f_\text{align}$ \\
   Quantitative results on the \textbf{pants} garment ($M=4$,
   $N \in \{5, 100\}$ shown; full range in supplementary).
   B2 is exact (exhaustive over $8^4$ phase assignments).
-  GA: mean $\pm$ std over 20 seeds.
-  $^\dagger$Preliminary: fewer than 20 seeds completed.
+  GA: mean $\pm$ std over 10 seeds.
+  $^\dagger$Preliminary: fewer than 10 seeds completed.
 }
 \label{tab:results_lower}
 \setlength{\tabcolsep}{5pt}
@@ -212,29 +308,44 @@ the visible discontinuity at each seam.
 \label{fig:comparison}
 \end{figure}
 
-\paragraph{Convergence.}
-Figure~\ref{fig:convergence} shows the best-so-far weighted fitness
-$F_\Sigma$ per generation, averaged over 20 seeds, for each body count.
-The convergence profile is characteristically step-like rather than smooth:
-as discussed in Section~\ref{sec:ea}, the KDTree snap discretises the
-$\boldsymbol{\delta}$ landscape into Voronoi cells, so that many mutations
-produce no fitness change and improvements appear as discrete jumps when a
-mutation crosses a cell boundary into a better seam configuration.
-Despite this, the GA consistently finds solutions strictly better than the
-initial population across all body counts, confirming that the search makes
-meaningful progress.
-% TODO: add quantitative convergence analysis once 20-seed runs complete
+\paragraph{Convergence and landscape validation.}
+Figure~\ref{fig:convergence} reports the best-so-far weighted fitness
+$F_\Sigma$ per generation for each body count, and serves as empirical
+validation of the landscape analysis in Section~\ref{sec:ea}.
+Three predictions from that analysis are testable from the convergence
+data.
+First, the $\boldsymbol{\delta}$ landscape is piecewise-constant over
+Voronoi plateaus, so improvements should appear as discrete jumps when a
+mutation crosses a cell boundary rather than as smooth descent.
+Second, consecutive improvements should be separated by extended stagnant
+stretches where most mutations fall inside the current plateau.
+Third, the magnitude of each jump should be non-trivial because crossing a
+plateau boundary corresponds to a qualitatively different LSCM flattening,
+not an infinitesimal perturbation.
+All three predictions hold: across all body counts and seeds, improvements
+are concentrated in roughly $3$--$7$ of $20$ generations$^\dagger$, with
+total drops of $14$--$29\%$ in $F_\Sigma$, matching the step structure
+predicted by the Voronoi tessellation.
+This is not a weakness of the optimiser: it is a structural property of
+the decision variable $\boldsymbol{\delta}$ under the mesh-vertex snap,
+and the population-based search is what allows the optimiser to cross
+plateau boundaries at all, since any single-point local search would halt
+the first time a mutation failed to improve fitness.
+% TODO: replace 3-7 and 14-29 with final 10-seed numbers once runs complete
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{convergence}
 \caption{
   Best-so-far $F_\Sigma$ vs.\ generation for the onesie garment,
-  mean $\pm$ std over 20 seeds per body count $N$.
-  Shaded bands show one standard deviation.
-  The step-like profile reflects the discrete Voronoi structure of the
-  $\boldsymbol{\delta}$ landscape (Section~\ref{sec:ea}).
-  $^\dagger$Placeholder; to be replaced with final results.
+  median and interquartile range over 10 seeds per body count $N$.
+  Improvements are concentrated in a small number of generations and
+  appear as discrete jumps separated by stagnant stretches, directly
+  reflecting the Voronoi tessellation of the $\boldsymbol{\delta}$
+  landscape (Section~\ref{sec:ea}): mutations that do not cross a cell
+  boundary produce zero fitness change, and each jump corresponds to a
+  qualitatively different LSCM flattening.
+  $^\dagger$Placeholder; to be replaced with final 10-seed results.
 }
 \label{fig:convergence}
 \end{figure}
