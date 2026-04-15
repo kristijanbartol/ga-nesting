@@ -40,15 +40,16 @@ samples from the same distribution as the GA's initial population
 ($\boldsymbol{\delta}_j \sim \mathcal{U}[0.2, 0.8]$,
 $\kappa_i \sim \mathcal{U}\{0, \dots, K{-}1\}$), evaluates each with the
 same geometry pipeline, Stage~2 solver, and nesting engine as the GA,
-and retains the best-found individual.
+and retains the best-found individual under the same fitness weighting.
 The sample count is set equal to the GA's evaluation budget
-($\mathrm{pop} \times \mathrm{gens} = 2{,}000$), so B3 and the GA use
-identical computation, identical evaluator, and identical search space;
-they differ only in how they move through it.
-B3 is therefore the strongest available test of whether population-based
-search is necessary: any improvement of the GA over B3 is attributable
-to selection, crossover, and variable-specific mutation, and cannot be
-explained by a larger search space or a stronger evaluator.
+($\mathrm{pop} \times \mathrm{gens} = 2{,}000$), and because both methods
+pay the same $55$--$60\,\%$ infeasibility tax on attempted evaluations
+(Section~\ref{sec:ea}), they also face the same effective valid-evaluation
+budget. B3 and the GA differ only in how they move through the search
+space, so any improvement of the GA over B3 is attributable to selection
+pressure concentrating the GA's valid samples near previously-discovered
+high-quality regions, which uniform random sampling cannot exploit by
+construction.
 
 \paragraph{B2: Optimal phase selection.}
 Phase offsets are assigned to minimise total seam phase mismatch without
@@ -164,10 +165,18 @@ $\boldsymbol{\delta}$ optimisation, which no $\boldsymbol{\kappa}$-only
 method performs.
 (ii) B3 searches the same joint $(\boldsymbol{\delta}, \boldsymbol{\kappa})$
 space as the GA at the same evaluation budget, with the same geometry
-pipeline and the same Stage~2 solver; any improvement of the GA over B3
-is therefore attributable to the evolutionary operators, selection,
-crossover, and variable-specific mutation, and cannot be explained by a
-larger search space or a stronger evaluator.
+pipeline and the same Stage~2 solver. The two methods pay the same
+infeasibility tax (Section~\ref{sec:ea}): $55$--$60\,\%$ of attempted
+evaluations fail with a death-penalty fitness in both cases, so neither
+method enjoys a larger effective valid-evaluation budget. The GA's
+improvement over B3 is therefore not attributable to implicit constraint
+handling but to \emph{where} in the feasibility region its valid samples
+are drawn from: selection pressure and mutation around elite parents
+concentrate the GA's sampling near the current best, whereas B3 draws
+uniformly from the full feasibility region and cannot exploit
+previously-discovered good neighbourhoods. The resulting
+$[X]\%$$^\dagger$ gap on $f_\text{align}$ quantifies this exploitation
+advantage at matched budget.
 (iii) B4 is an off-the-shelf CMA-ES applied to $\boldsymbol{\delta}$
 alone with $\boldsymbol{\kappa} = 0$, again at matched evaluation
 budget; any improvement of the GA over B4 is attributable either to

@@ -295,7 +295,7 @@ next generation, ensuring monotone improvement of the best-so-far
 solution.
 
 \paragraph{Search landscape characteristics.}
-The landscape presented to the EA is unusual in two respects.
+The landscape presented to the EA is unusual in three respects.
 First, the $\boldsymbol{\delta}$ variables are nominally continuous but the
 KDTree snap creates a discrete Voronoi tessellation: many neighbouring
 $\boldsymbol{\delta}$ values map to the same mesh vertex, producing large
@@ -307,8 +307,18 @@ Second, the Stage~2 Levenberg--Marquardt solver absorbs much of the local
 phase-correction signal, so that $\boldsymbol{\kappa}$ mutations contribute
 mainly when they shift patches into qualitatively different phase
 relationships that Stage~2 alone cannot reach.
+Third, the feasibility region is sparse: approximately $55$--$60\,\%$ of
+candidate $\boldsymbol{\delta}$ configurations cause the geometry pipeline
+to fail with degenerate geodesic cuts, LSCM singularities, or missing
+patches. These are genuine mathematical singularities of the underlying
+cut-and-flatten operation rather than implementation artefacts.
+Failed individuals receive a death-penalty fitness and are never selected
+as parents; we report the failure rate explicitly in
+Section~\ref{sec:results} and as part of the per-method statistics, since
+it is a characterisation of the problem rather than a property of any
+particular optimiser.
 The GA's advantage over baselines that fix $\boldsymbol{\delta} = 0.5$
 therefore comes primarily from $\boldsymbol{\delta}$ mutations that
 discover seam placements where the LSCM flattening produces inherently
 better-aligned patch boundaries, a region of the search space no
-baseline can reach.
+$\boldsymbol{\kappa}$-only baseline can reach.
