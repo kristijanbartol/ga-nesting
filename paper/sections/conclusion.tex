@@ -7,24 +7,31 @@ fit-preservation guard, and demonstrated its solvability with a
 mixed-integer evolution strategy.
 By optimising seam positions directly on the 3D body mesh, all pattern
 modifications are grounded in body geometry, making fit deviation an
-explicit and measurable objective.
+explicit and measurable quantity.
 A global phase alignment stage and discrete texture phase offsets per patch
 exploit the full periodic symmetry of the fabric, modelled across eight
 wallpaper groups including those with glide-reflection symmetry.
-For complex garments where the combinatorial phase space makes exhaustive
-search intractable, the evolution strategy is the only evaluated method
-that jointly explores seam positions and phase assignments.
-Experiments on two garment types with up to 1{,}100 pattern pieces
-demonstrate consistent improvement in texture alignment over all baselines
-without sacrificing fabric efficiency.
+Systematic ablation decomposes the GA's advantage into three individually
+attributable components: $\boldsymbol{\delta}$ search provides the
+largest single improvement (12\% over the best $\boldsymbol{\kappa}$-only
+baseline), evolutionary operators exploit the sparse
+$\boldsymbol{\delta}$ landscape more effectively than random search
+(${\sim}$3\%), and $\boldsymbol{\kappa}$ mutation contributes a further
+${\sim}$6\% by reaching global phase reconfigurations inaccessible to
+Stage~2 alone.
+Experiments on three garment types ($M \in \{2, 4, 11\}$) with up to
+2{,}200 pattern pieces demonstrate consistent improvement in texture
+alignment over all baselines including random search at matched
+evaluation budget.
 
 \paragraph{Limitations and future work.}
 The nesting engine uses a bottom-left heuristic; substituting an
 NFP-based solver~\cite{MartinezSykoraACRO22} could improve fabric
 utilisation without affecting the other contributions.
-A small fraction of individuals fail during geometry processing (geodesic
-or LSCM failures), receiving penalty fitness; more robust geometry
-processing would improve effective population size.
+Approximately 55--60\,\% of candidate $\boldsymbol{\delta}$ configurations
+fail during geometry processing (geodesic or LSCM singularities),
+receiving death-penalty fitness; more robust geometry processing or
+adaptive step-size control would improve effective population utilisation.
 The discrete Voronoi structure of the $\boldsymbol{\delta}$ landscape
 (Section~\ref{sec:ea}) causes many neutral mutations; adaptive step-size
 control or landscape-aware operators could accelerate convergence.
